@@ -35,7 +35,8 @@
 <br><br>
 
 <section id="about">
-
+# About Wrath Combo CN
+    <p>由于上游API12更新，国服无法使用主分支，这里将提供简单汉化且国服可用的版本</p>
 # About Wrath Combo
 
 <p> Wrath Combo is a plugin for <a href="https://goatcorp.github.io/" alt="XIVLauncher">XIVLauncher</a>.<br><br>

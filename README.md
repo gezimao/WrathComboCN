@@ -35,6 +35,7 @@
 <br><br>
 # About Wrath Combo CN
     由于上游API12更新，国服无法使用主分支，这里将提供简单汉化且国服可用的版本
+    使用方式：右侧Releases点进去下载打好的包，本地加载。
 <section id="about">
 
 # About Wrath Combo

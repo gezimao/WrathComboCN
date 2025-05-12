@@ -12,18 +12,189 @@ namespace WrathCombo.Combos.PvE;
 
 internal partial class SAM
 {
-    internal static SAMGauge Gauge = GetJobGauge<SAMGauge>();
     internal static SAMOpenerMaxLevel1 Opener1 = new();
 
-    internal static int MeikyoUsed => ActionWatching.CombatActions.Count(x => x == MeikyoShisui);
+    internal static bool RefreshFugetsu => GetStatusEffectRemainingTime(Buffs.Fugetsu) < GetStatusEffectRemainingTime(Buffs.Fuka);
 
-    internal static float GCD => GetCooldown(Hakaze).CooldownTotal;
+    internal static bool RefreshFuka => GetStatusEffectRemainingTime(Buffs.Fuka) < GetStatusEffectRemainingTime(Buffs.Fugetsu);
+
+    internal static bool MaxLvL => TraitLevelChecked(Traits.EnhancedHissatsu);
+
+    internal static bool DoubleMeikyo => TraitLevelChecked(Traits.EnhancedMeikyoShishui);
 
     internal static int SenCount => GetSenCount();
 
-    internal static bool ComboStarted => GetComboStarted();
+    internal static bool UseMeikyo()
+    {
+        float gcd = ActionManager.GetAdjustedRecastTime(ActionType.Action, Hakaze) / 100f;
+        int meikyoUsed = ActionWatching.CombatActions.Count(x => x == MeikyoShisui);
 
-    internal static int NumSen => GetNumSen();
+        if (ActionReady(MeikyoShisui) && !HasStatusEffect(Buffs.Tendo) &&
+            (JustUsed(Gekko) || JustUsed(Kasha) || JustUsed(Yukikaze)))
+        {
+            //if no opener/before lvl 100
+            if ((IsNotEnabled(CustomComboPreset.SAM_ST_Opener) || !LevelChecked(TendoSetsugekka) ||
+                 IsEnabled(CustomComboPreset.SAM_ST_Opener) && Config.SAM_Balance_Content == 1 && !InBossEncounter()) &&
+                meikyoUsed < 2 && !HasStatusEffect(Buffs.MeikyoShisui) && !HasStatusEffect(Buffs.TsubameReady))
+                return true;
+
+            //double meikyo
+            if (DoubleMeikyo)
+            {
+                if (HasStatusEffect(Buffs.TsubameReady))
+                {
+                    switch (gcd)
+                    {
+                        //Even windows
+                        case >= 2.09f when
+                            GetCooldownRemainingTime(Senei) <= 10 &&
+                            (meikyoUsed % 7 is 2 && SenCount is 3 && IsOffCooldown(Ikishoten) ||
+                             meikyoUsed % 7 is 4 && SenCount is 2 ||
+                             meikyoUsed % 7 is 6 && SenCount is 1):
+
+                        //Odd windows
+                        case >= 2.09f when
+                            (MaxLvL && GetCooldownRemainingTime(Senei) <= 10 ||
+                             !MaxLvL && GetCooldownRemainingTime(Senei) is > 45 and <= 85) &&
+                            (meikyoUsed % 7 is 1 && SenCount is 3 ||
+                             meikyoUsed % 7 is 3 && SenCount is 2 ||
+                             meikyoUsed % 7 is 5 && SenCount is 1):
+
+                        //Even windows
+                        case <= 2.08f when
+                            GetCooldownRemainingTime(Senei) <= 5 && SenCount is 3:
+
+                        //Odd windows
+                        case <= 2.08f when
+                            (!MaxLvL && GetCooldownRemainingTime(Senei) is > 45 and <= 85 ||
+                             MaxLvL && GetCooldownRemainingTime(Senei) <= 5) && SenCount is 3:
+
+                            return true;
+                    }
+                }
+
+                // reset meikyo
+                if (gcd >= 2.09f && meikyoUsed % 7 is 0 && !HasStatusEffect(Buffs.MeikyoShisui) && WasLastWeaponskill(Yukikaze))
+                    return true;
+            }
+
+            //Pre double meikyo
+            if (!DoubleMeikyo && GetRemainingCharges(MeikyoShisui) == GetMaxCharges(MeikyoShisui) && !HasStatusEffect(Buffs.TsubameReady))
+                return true;
+        }
+
+        return false;
+    }
+
+    // Iaijutsu Features
+    internal static bool UseIaijutsu(ref uint actionID)
+    {
+        int higanbanaThreshold = Config.SAM_ST_Higanbana_Threshold;
+
+        if (LevelChecked(Iaijutsu))
+        {
+            if (IsEnabled(CustomComboPreset.SAM_ST_SimpleMode))
+            {
+                if (HasStatusEffect(Buffs.TsubameReady) &&
+                    (SenCount is 3 ||
+                     MaxLvL && GetCooldownRemainingTime(Senei) > 33 ||
+                     !MaxLvL && GetCooldownRemainingTime(Senei) < 45 ||
+                     !MaxLvL && GetCooldownRemainingTime(Senei) >= 85) ||
+                    HasStatusEffect(Buffs.TendoKaeshiSetsugekkaReady))
+                {
+                    actionID = OriginalHook(TsubameGaeshi);
+                    return true;
+                }
+
+                if (!IsMoving())
+                {
+                    if (SenCount is 1 && GetTargetHPPercent() > 1 && TargetIsBoss() &&
+                        (GetStatusEffectRemainingTime(Debuffs.Higanbana, CurrentTarget) <= 10 && JustUsed(MeikyoShisui, 15f) ||
+                         !HasStatusEffect(Debuffs.Higanbana, CurrentTarget)))
+                    {
+                        actionID = OriginalHook(Iaijutsu);
+                        return true;
+                    }
+
+                    if (SenCount is 2 && !LevelChecked(MidareSetsugekka))
+                    {
+                        actionID = OriginalHook(Iaijutsu);
+                        return true;
+                    }
+
+                    if (SenCount is 3 && LevelChecked(MidareSetsugekka) && !HasStatusEffect(Buffs.TsubameReady))
+                    {
+                        actionID = OriginalHook(Iaijutsu);
+                        return true;
+                    }
+                }
+            }
+
+            if (IsEnabled(CustomComboPreset.SAM_ST_AdvancedMode))
+            {
+                if (Config.SAM_ST_CDs_IaijutsuOption[3] &&
+                    (HasStatusEffect(Buffs.TsubameReady) &&
+                     (SenCount is 3 ||
+                      MaxLvL && GetCooldownRemainingTime(Senei) > 33 ||
+                      !MaxLvL && GetCooldownRemainingTime(Senei) < 45 ||
+                      !MaxLvL && GetCooldownRemainingTime(Senei) >= 85) ||
+                     HasStatusEffect(Buffs.TendoKaeshiSetsugekkaReady)))
+                {
+                    actionID = OriginalHook(TsubameGaeshi);
+                    return true;
+                }
+
+                if (!IsEnabled(CustomComboPreset.SAM_ST_CDs_Iaijutsu_Movement) ||
+                    IsEnabled(CustomComboPreset.SAM_ST_CDs_Iaijutsu_Movement) && !IsMoving())
+                {
+                    if (Config.SAM_ST_CDs_IaijutsuOption[0] &&
+                        SenCount is 1 && GetTargetHPPercent() > higanbanaThreshold &&
+                        (Config.SAM_ST_Higanbana_Suboption == 0 ||
+                         Config.SAM_ST_Higanbana_Suboption == 1 && TargetIsBoss()) &&
+                        (GetStatusEffectRemainingTime(Debuffs.Higanbana, CurrentTarget) <= 10 && JustUsed(MeikyoShisui, 15f) ||
+                         !HasStatusEffect(Debuffs.Higanbana, CurrentTarget)))
+                    {
+                        actionID = OriginalHook(Iaijutsu);
+                        return true;
+                    }
+
+                    if (Config.SAM_ST_CDs_IaijutsuOption[1] &&
+                        SenCount is 2 && !LevelChecked(MidareSetsugekka))
+                    {
+                        actionID = OriginalHook(Iaijutsu);
+                        return true;
+                    }
+
+                    if (Config.SAM_ST_CDs_IaijutsuOption[2] &&
+                        SenCount is 3 && LevelChecked(MidareSetsugekka) && !HasStatusEffect(Buffs.TsubameReady))
+                    {
+                        actionID = OriginalHook(Iaijutsu);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static int GetSenCount()
+    {
+        int senCount = 0;
+
+        if (HasGetsu)
+            senCount++;
+
+        if (HasSetsu)
+            senCount++;
+
+        if (HasKa)
+            senCount++;
+
+        return senCount;
+    }
+
+    #region Openers
 
     internal static WrathOpener Opener()
     {
@@ -32,94 +203,6 @@ internal partial class SAM
 
         return WrathOpener.Dummy;
     }
-
-    private static int GetSenCount()
-    {
-        int senCount = 0;
-
-        if (Gauge.HasGetsu)
-            senCount++;
-
-        if (Gauge.HasSetsu)
-            senCount++;
-
-        if (Gauge.HasKa)
-            senCount++;
-
-        return senCount;
-    }
-
-    private static unsafe bool GetComboStarted()
-    {
-        uint comboAction = ActionManager.Instance()->Combo.Action;
-
-        return comboAction == OriginalHook(Hakaze) ||
-               comboAction == Jinpu ||
-               comboAction == Shifu;
-    }
-
-    private static int GetNumSen()
-    {
-        bool ka = Gauge.Sen.HasFlag(Sen.Ka);
-        bool getsu = Gauge.Sen.HasFlag(Sen.Getsu);
-        bool setsu = Gauge.Sen.HasFlag(Sen.Setsu);
-
-        return (ka ? 1 : 0) + (getsu ? 1 : 0) + (setsu ? 1 : 0);
-    }
-
-    internal static bool UseMeikyo()
-    {
-        float gcd = ActionManager.GetAdjustedRecastTime(ActionType.Action, Hakaze) / 100f;
-
-        if (ActionReady(MeikyoShisui) &&
-            (CanWeave() || CanDelayedWeave()) &&
-            (WasLastWeaponskill(Gekko) || WasLastWeaponskill(Kasha) || WasLastWeaponskill(Yukikaze)) &&
-            (!HasEffect(Buffs.Tendo) || !LevelChecked(TendoSetsugekka)))
-        {
-            //if no opener/before lvl 100
-            if ((IsNotEnabled(CustomComboPreset.SAM_ST_Opener) ||
-                 !LevelChecked(TendoSetsugekka) ||
-                 IsEnabled(CustomComboPreset.SAM_ST_Opener) && Config.SAM_Balance_Content == 1 && !InBossEncounter()) &&
-                MeikyoUsed < 2 && !HasEffect(Buffs.MeikyoShisui) && !HasEffect(Buffs.TsubameReady))
-                return true;
-
-            //double meikyo
-            if (TraitLevelChecked(Traits.EnhancedMeikyoShishui) && HasEffect(Buffs.TsubameReady))
-            {
-                switch (gcd)
-                {
-                    //Even windows
-                    case >= 2.09f when GetCooldownRemainingTime(Ikishoten) > 60 &&
-                                       (MeikyoUsed % 7 is 2 && SenCount is 3 ||
-                                        MeikyoUsed % 7 is 4 && SenCount is 2 ||
-                                        MeikyoUsed % 7 is 6 && SenCount is 1):
-                    //Odd windows
-                    case >= 2.09f when GetCooldownRemainingTime(Ikishoten) is <= 60 &&
-                                       (MeikyoUsed % 7 is 1 && SenCount is 3 ||
-                                        MeikyoUsed % 7 is 3 && SenCount is 2 ||
-                                        MeikyoUsed % 7 is 5 && SenCount is 1):
-                    //Even windows
-                    case <= 2.08f when GetCooldownRemainingTime(Ikishoten) > 60 && SenCount is 3:
-
-                    //Odd windows
-                    case <= 2.08f when GetCooldownRemainingTime(Ikishoten) is <= 60 && SenCount is 3:
-                        return true;
-                }
-            }
-
-            // reset meikyo
-            if (gcd >= 2.09f && MeikyoUsed % 7 is 0 && !HasEffect(Buffs.MeikyoShisui) && WasLastWeaponskill(Yukikaze))
-                return true;
-
-            //Pre double meikyo / Overcap protection
-            if (GetRemainingCharges(MeikyoShisui) == GetMaxCharges(MeikyoShisui) && !HasEffect(Buffs.TsubameReady))
-                return true;
-        }
-
-        return false;
-    }
-
-    #region Openers
 
     internal class SAMOpenerMaxLevel1 : WrathOpener
     {
@@ -174,6 +257,26 @@ internal partial class SAM
             IsOffCooldown(Senei) &&
             IsOffCooldown(Ikishoten);
     }
+
+    #endregion
+
+    #region Gauge
+
+    internal static SAMGauge Gauge = GetJobGauge<SAMGauge>();
+
+    internal static bool HasGetsu => Gauge.HasGetsu;
+
+    internal static bool HasSetsu => Gauge.HasSetsu;
+
+    internal static bool HasKa => Gauge.HasKa;
+
+    internal static byte Kenki => Gauge.Kenki;
+
+    internal static byte MeditationStacks => Gauge.MeditationStacks;
+
+    internal static Kaeshi Kaeshi => Gauge.Kaeshi;
+
+    internal static bool NamikiriReady => Kaeshi is Kaeshi.Namikiri;
 
     #endregion
 

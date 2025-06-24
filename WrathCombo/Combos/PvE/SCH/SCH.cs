@@ -1,5 +1,6 @@
-using Dalamud.Game.ClientState.Objects.Types;
 using System.Linq;
+using WrathCombo.Combos.PvE.Content;
+using WrathCombo.Core;
 using WrathCombo.CustomComboNS;
 using WrathCombo.Data;
 using WrathCombo.Extensions;
@@ -130,7 +131,10 @@ internal partial class SCH : Healer
         protected internal override CustomComboPreset Preset { get; } = CustomComboPreset.SCH_Raise;
         protected override uint Invoke(uint actionID) =>
             actionID == Role.Swiftcast && IsOnCooldown(Role.Swiftcast)
-                ? Resurrection
+                ? IsEnabled(CustomComboPreset.SCH_Raise_Retarget)
+                    ? Resurrection.Retarget(Role.Swiftcast,
+                        SimpleTarget.Stack.AllyToRaise)
+                    : Resurrection
                 : actionID;
     }
 
@@ -156,8 +160,8 @@ internal partial class SCH : Healer
             if (actionID is not DeploymentTactics || !ActionReady(DeploymentTactics))
                 return actionID;
 
-            //Grab our target (Soft->Hard->Self)
-            IGameObject? healTarget = GetHealTarget(Config.SCH_DeploymentTactics_Adv && Config.SCH_DeploymentTactics_UIMouseOver);
+            //Grab our target
+            var healTarget = OptionalTarget ?? SimpleTarget.Stack.AllyToHeal;
 
             //Check for the Galvanize shield buff. Start applying if it doesn't exist
             if (!HasStatusEffect(Buffs.Galvanize, healTarget)) 
@@ -208,6 +212,9 @@ internal partial class SCH : Healer
             if (Variant.CanRampart(CustomComboPreset.SCH_DPS_Variant_Rampart))
                 return Variant.Rampart;
 
+            if (OccultCrescent.ShouldUsePhantomActions())
+                return OccultCrescent.BestPhantomAction();
+
             //Opener
             if (IsEnabled(CustomComboPreset.SCH_DPS_Balance_Opener) &&
                 Opener().FullOpener(ref actionID))
@@ -246,7 +253,7 @@ internal partial class SCH : Healer
                      Config.SCH_ST_DPS_ChainStratagemSubOption == 1 && InBossEncounter()))
                 {
                     // If CS is available and usable, or if the Impact Buff is on Player
-                    if (ActionReady(ChainStratagem) &&
+                    if (ActionReady(ChainStratagem) && CanApplyStatus(CurrentTarget, Debuffs.ChainStratagem) &&
                         !HasStatusEffect(Debuffs.ChainStratagem, CurrentTarget, true) &&
                         GetTargetHPPercent() > Config.SCH_ST_DPS_ChainStratagemOption &&
                         InCombat() &&
@@ -270,7 +277,7 @@ internal partial class SCH : Healer
 
                     float refreshTimer = Config.SCH_DPS_BioUptime_Threshold;
                     int hpThreshold = Config.SCH_DPS_BioSubOption == 1 || !InBossEncounter() ? Config.SCH_DPS_BioOption : 0;
-                    if (GetStatusEffectRemainingTime(dotDebuffID, CurrentTarget) <= refreshTimer &&
+                    if (GetStatusEffectRemainingTime(dotDebuffID, CurrentTarget) <= refreshTimer && CanApplyStatus(CurrentTarget, dotDebuffID) &&
                         GetTargetHPPercent() > hpThreshold)
                         return OriginalHook(Bio);
                 }
@@ -306,6 +313,9 @@ internal partial class SCH : Healer
 
             if (Variant.CanSpiritDart(CustomComboPreset.SCH_DPS_Variant_SpiritDart))
                 return Variant.SpiritDart;
+
+            if (OccultCrescent.ShouldUsePhantomActions())
+                return OccultCrescent.BestPhantomAction();
 
             // Aetherflow
             if (IsEnabled(CustomComboPreset.SCH_AoE_Aetherflow) &&
@@ -358,9 +368,16 @@ internal partial class SCH : Healer
             {
                 int index = Config.SCH_AoE_Heals_Priority.IndexOf(i + 1);
                 int config = GetMatchingConfigAoE(index, out uint spell, out bool enabled);
+                bool onIdom = IsEnabled(CustomComboPreset.SCH_AoE_Heal_Recitation) && 
+                              Config.SCH_AoE_Heal_Recitation_Actions[0] && spell is Indomitability;
+                bool onSuccor = IsEnabled(CustomComboPreset.SCH_AoE_Heal_Recitation) && 
+                                Config.SCH_AoE_Heal_Recitation_Actions[1] && spell is Succor or Concitation;
 
                 if (enabled && averagePartyHP <= config && ActionReady(spell))
-                    return spell;
+                     return ActionReady(Recitation) && (onIdom || onSuccor) ? 
+                        Recitation :
+                        spell;
+
             }
 
             return actionID;
@@ -437,13 +454,14 @@ internal partial class SCH : Healer
                 && GetTargetHPPercent(AetherPactTarget) >= Config.SCH_ST_Heal_AetherpactDissolveOption)
                 return DissolveUnion;
 
-            //Grab our target (Soft->Hard->Self)
-            IGameObject? healTarget = OptionalTarget ?? GetHealTarget(Config.SCH_ST_Heal_Adv && Config.SCH_ST_Heal_UIMouseOver);
+            //Grab our target
+            var healTarget = OptionalTarget ?? SimpleTarget.Stack.AllyToHeal;
 
             if (IsEnabled(CustomComboPreset.SCH_ST_Heal_Esuna) && ActionReady(Role.Esuna) &&
                 GetTargetHPPercent(healTarget, Config.SCH_ST_Heal_IncludeShields) >= Config.SCH_ST_Heal_EsunaOption &&
                 HasCleansableDebuff(healTarget))
-                return Role.Esuna;
+                return Role.Esuna
+                    .RetargetIfEnabled(OptionalTarget, Physick);
 
             for(int i = 0; i < Config.SCH_ST_Heals_Priority.Count; i++)
             {
@@ -454,7 +472,8 @@ internal partial class SCH : Healer
                 {
                     if (GetTargetHPPercent(healTarget, Config.SCH_ST_Heal_IncludeShields) <= config &&
                         ActionReady(spell))
-                        return spell;
+                        return spell
+                            .RetargetIfEnabled(OptionalTarget, Physick);
                 }
             }
 
@@ -470,10 +489,12 @@ internal partial class SCH : Healer
                     (!Config.SCH_ST_Heal_AldoquimOpts[1] ||
                      !HasStatusEffect(SGE.Buffs.EukrasianDiagnosis, healTarget, true) && !HasStatusEffect(SGE.Buffs.EukrasianPrognosis, healTarget, true)
                     )) //Eukrasia Shield Check
-                    return OriginalHook(Adloquium);
+                    return OriginalHook(Adloquium)
+                        .RetargetIfEnabled(OptionalTarget, Physick);
             }
 
-            return actionID;
+            return actionID
+                .RetargetIfEnabled(OptionalTarget, Physick);
         }
     }
 }

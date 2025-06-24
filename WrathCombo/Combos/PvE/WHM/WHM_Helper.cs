@@ -5,6 +5,7 @@ using Dalamud.Game.ClientState.JobGauge.Types;
 using Dalamud.Game.ClientState.Objects.Types;
 using WrathCombo.CustomComboNS;
 using WrathCombo.CustomComboNS.Functions;
+using WrathCombo.Data;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 
 // ReSharper disable AccessToStaticMemberViaDerivedType
@@ -35,9 +36,35 @@ internal partial class WHM
         var dotRemaining = GetStatusEffectRemainingTime(dotDebuffID, CurrentTarget);
 
         return ActionReady(dotAction) &&
+               CanApplyStatus(CurrentTarget, dotDebuffID) &&
+               !JustUsedOn(dotAction, CurrentTarget, 5f) &&
                HasBattleTarget() &&
                GetTargetHPPercent() > hpThreshold &&
                dotRemaining <= Config.WHM_ST_MainCombo_DoT_Threshold;
+    }
+
+    internal static bool BellRaidwideCheckPassed
+    {
+        get
+        {
+            if (!IsEnabled(CustomComboPreset.WHM_AoEHeals_LiturgyOfTheBell))
+                return false;
+            
+            // Skip any checks if Raidwide checking is not enabled
+            if (!Config.WHM_AoEHeals_LiturgyRaidwideOnly)
+                return true;
+
+            // Skip Raidwide check if not in a boss fight, and that check is restricted to bosses
+            if (Config.WHM_AoEHeals_LiturgyRaidwideOnlyBoss ==
+                (int)Config.BossRequirement.On &&
+                !InBossEncounter())
+                return true;
+            
+            if (!RaidWideCasting())
+                return false;
+            
+            return true;
+        }
     }
 
     #region Heal Priority
@@ -90,6 +117,18 @@ internal partial class WHM
                            Config.WHM_STHeals_AquaveilWeave && canWeave);
 
                 return Config.WHM_STHeals_AquaveilHP;
+
+            case 4:
+                action = Temperance;
+
+                enabled = IsEnabled(CustomComboPreset.WHM_STHeals_Temperance) &&
+                          (!Config.WHM_STHeals_TemperanceWeave ||
+                           Config.WHM_STHeals_TemperanceWeave && canWeave) &&
+                          ContentCheck.IsInConfiguredContent(
+                              Config.WHM_STHeals_TemperanceDifficulty,
+                              Config.WHM_STHeals_TemperanceDifficultyListSet);
+
+                return Config.WHM_STHeals_TemperanceHP;
         }
 
         enabled = false;
@@ -217,11 +256,15 @@ internal partial class WHM
         DivineBenison = 7432,
         Aquaveil = 25861,
         DivineCaress = 37011,
+        Asylum = 3569,
+        LiturgyOfTheBell = 25862,
+        LiturgyOfTheBellRecast = 28509,
 
         // Buffs
         ThinAir = 7430,
         PresenceOfMind = 136,
-        PlenaryIndulgence = 7433;
+        PlenaryIndulgence = 7433,
+        Temperance = 16536;
 
 
     public static class Buffs
@@ -235,7 +278,9 @@ internal partial class WHM
             DivineBenison = 1218,
             Aquaveil = 2708,
             SacredSight = 3879,
-            DivineGrace = 3881;
+            LiturgyOfTheBell = 2709,
+            DivineGrace = 3881,
+            Temperance = 1872;
     }
 
     public static class Debuffs

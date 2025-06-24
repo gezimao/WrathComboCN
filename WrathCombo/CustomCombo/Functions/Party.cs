@@ -1,18 +1,18 @@
 ﻿using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.ClientState.Objects.Types;
-using ECommons;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
 using ECommons.GameFunctions;
 using ECommons.GameHelpers;
 using ECommons.Throttlers;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.UI.Info;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using WrathCombo.AutoRotation;
 using WrathCombo.Combos.PvE;
-using WrathCombo.Services;
 
 namespace WrathCombo.CustomComboNS.Functions
 {
@@ -24,26 +24,51 @@ namespace WrathCombo.CustomComboNS.Functions
 
         /// <summary> Gets the party list </summary>
         /// <returns> Current party list. </returns>
-        public static unsafe List<WrathPartyMember> GetPartyMembers()
+        public static unsafe List<WrathPartyMember> GetPartyMembers(bool allowCache = true)
         {
             if (!Player.Available) return [];
-            if (!EzThrottler.Throttle("PartyUpdateThrottle", 2000))
+            if (allowCache && !EzThrottler.Throttle("PartyUpdateThrottle", 2000))
                 return _partyList;
 
             var existingIds = _partyList.Select(x => x.GameObjectId).ToHashSet();
 
             for (int i = 1; i <= 8; i++)
             {
-                var member = PartyUITargeting.GetPartySlot(i);
-                if (member is IBattleChara chara && !existingIds.Contains(chara.GameObjectId))
+                var member = SimpleTarget.GetPartyMemberInSlotSlot(i);
+                if (member is IBattleChara chara)
                 {
-                    WrathPartyMember wmember = new()
+                    var existingMember = _partyList.FirstOrDefault(x => x.GameObjectId == chara.GameObjectId);
+                    if (existingMember != null)
                     {
-                        GameObjectId = chara.GameObjectId,
-                        CurrentHP = chara.CurrentHp
-                    };
-                    _partyList.Add(wmember);
-                    existingIds.Add(chara.GameObjectId);
+                        // Update existing member's properties as needed
+                        existingMember.CurrentHP = chara.CurrentHp;
+                        if (member is IBattleNpc)
+                        {
+                            foreach (var p in InfoProxyPartyMember.Instance()->CharDataSpan)
+                            {
+                                if (p.Sort == i - 1)
+                                    existingMember.NPCClassJob = p.Job;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        WrathPartyMember wmember = new()
+                        {
+                            GameObjectId = chara.GameObjectId,
+                            CurrentHP = chara.CurrentHp
+                        };
+                        if (member is IBattleNpc)
+                        {
+                            foreach (var p in InfoProxyPartyMember.Instance()->CharDataSpan)
+                            {
+                                if (p.Sort == i - 1)
+                                    wmember.NPCClassJob = p.Job;
+                            }
+                        }
+                        _partyList.Add(wmember);
+                        existingIds.Add(chara.GameObjectId);
+                    }
                 }
             }
 
@@ -70,22 +95,6 @@ namespace WrathCombo.CustomComboNS.Functions
 
         private static List<WrathPartyMember> _partyList = new();
 
-        //public static unsafe IGameObject? GetPartySlot(int slot)
-        //{
-        //    return slot switch
-        //    {
-        //        1 => Player.Object,
-        //        2 => GetTarget(TargetType.P2),
-        //        3 => GetTarget(TargetType.P3),
-        //        4 => GetTarget(TargetType.P4),
-        //        5 => GetTarget(TargetType.P5),
-        //        6 => GetTarget(TargetType.P6),
-        //        7 => GetTarget(TargetType.P7),
-        //        8 => GetTarget(TargetType.P8),
-        //        _ => null,
-        //    };
-        //}
-
         public static float GetPartyAvgHPPercent()
         {
             float totalHP = 0;
@@ -93,7 +102,7 @@ namespace WrathCombo.CustomComboNS.Functions
 
             for (int i = 1; i <= 8; i++)
             {
-                if (PartyUITargeting.GetPartySlot(i) is IBattleChara member && !member.IsDead)
+                if (SimpleTarget.GetPartyMemberInSlotSlot(i) is IBattleChara member && !member.IsDead)
                 {
                     totalHP += GetTargetHPPercent(member);
                     count++;
@@ -110,7 +119,7 @@ namespace WrathCombo.CustomComboNS.Functions
 
             for (int i = 1; i <= 8; i++)
             {
-                if (PartyUITargeting.GetPartySlot(i) is IBattleChara member && !member.IsDead)
+                if (SimpleTarget.GetPartyMemberInSlotSlot(i) is IBattleChara member && !member.IsDead)
                 {
                     if (HasStatusEffect(buff, member, true)) buffCount++;
                     partyCount++;
@@ -136,6 +145,9 @@ namespace WrathCombo.CustomComboNS.Functions
         public bool HPUpdatePending = false;
         public bool MPUpdatePending = false;
         public ulong GameObjectId;
+        public uint NPCClassJob;
+
+        public ClassJob? RealJob => NPCClassJob > 0 && Svc.Data.Excel.GetSheet<ClassJob>().TryGetRow(NPCClassJob, out var r) ? r : BattleChara?.ClassJob.Value ?? Svc.Data.Excel.GetSheet<ClassJob>().GetRow(0);
         public IBattleChara? BattleChara => Svc.Objects.FirstOrDefault(x => x.GameObjectId == GameObjectId) as IBattleChara;
         public Dictionary<ushort, long> BuffsGainedAt = new();
 

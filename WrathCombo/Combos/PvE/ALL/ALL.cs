@@ -1,5 +1,8 @@
-﻿using ECommons.DalamudServices;
+﻿using System.Collections.Generic;
+using ECommons.DalamudServices;
+using WrathCombo.Core;
 using WrathCombo.CustomComboNS;
+using WrathCombo.Data;
 
 namespace WrathCombo.Combos.PvE;
 
@@ -42,6 +45,7 @@ internal partial class All
     public static class Debuffs
     {
         public const ushort
+            Stun = 2,
             Weakness = 43,
             BrinkOfDeath = 44;
     }
@@ -63,13 +67,14 @@ internal partial class All
 
         protected override uint Invoke(uint actionID)
         {
+            var tar = IsEnabled(CustomComboPreset.ALL_Tank_Interrupt_Retarget) ? SimpleTarget.InterruptableEnemy : CurrentTarget;
             switch (actionID)
             {
-                case RoleActions.Tank.LowBlow or PLD.ShieldBash when CanInterruptEnemy() && ActionReady(RoleActions.Tank.Interject):
-                    return RoleActions.Tank.Interject;
+                case RoleActions.Tank.LowBlow or PLD.ShieldBash when CanInterruptEnemy(null, tar) && ActionReady(RoleActions.Tank.Interject):
+                    return RoleActions.Tank.Interject.Retarget(actionID, tar);
 
-                case RoleActions.Tank.LowBlow or PLD.ShieldBash when TargetIsCasting() && ActionReady(RoleActions.Tank.LowBlow):
-                    return RoleActions.Tank.LowBlow;
+                case RoleActions.Tank.LowBlow or PLD.ShieldBash when TargetIsCasting() && ActionReady(RoleActions.Tank.LowBlow) && !TargetIsBoss():
+                    return RoleActions.Tank.LowBlow.Retarget(actionID, tar);
 
                 case PLD.ShieldBash when IsOnCooldown(RoleActions.Tank.LowBlow):
                 default:
@@ -83,9 +88,32 @@ internal partial class All
         protected internal override CustomComboPreset Preset { get; } = CustomComboPreset.ALL_Tank_Reprisal;
 
         protected override uint Invoke(uint actionID) =>
-            actionID is RoleActions.Tank.Reprisal && HasStatusEffect(RoleActions.Tank.Debuffs.Reprisal, CurrentTarget, true) && IsOffCooldown(RoleActions.Tank.Reprisal)
+            actionID is RoleActions.Tank.Reprisal && GetStatusEffectRemainingTime(RoleActions.Tank.Debuffs.Reprisal, CurrentTarget, true) > Config.ALL_Tank_Reprisal_Threshold && IsOffCooldown(RoleActions.Tank.Reprisal)
                 ? SavageBlade
                 : actionID;
+    }
+
+    internal class ALL_Tank_Shirk : CustomCombo
+    {
+        protected internal override CustomComboPreset Preset { get; } = CustomComboPreset.ALL_Tank_ShirkRetargeting;
+
+        protected override uint Invoke(uint actionID)
+        {
+            if (actionID is not RoleActions.Tank.Shirk)
+                return actionID;
+
+            var target =
+                IsNotEnabled(CustomComboPreset.ALL_Tank_ShirkRetargeting_Healer)
+                    ? SimpleTarget.AnyLivingTank
+                    : SimpleTarget.AnyLivingHealer;
+
+            if (IsEnabled(CustomComboPreset.ALL_Tank_ShirkRetargeting_Fallback))
+                target ??= SimpleTarget.AnyLivingSupport;
+
+            RoleActions.Tank.Shirk.Retarget(target, dontCull: true);
+
+            return actionID;
+        }
     }
 
     //Healer Features
@@ -95,24 +123,43 @@ internal partial class All
 
         protected override uint Invoke(uint actionID)
         {
-            switch (actionID)
-            {
-                case WHM.Raise or AST.Ascend or SGE.Egeiro:
-                case SCH.Resurrection when LocalPlayer.ClassJob.Value.RowId is SCH.JobID:
-                {
-                    if (ActionReady(RoleActions.Magic.Swiftcast))
-                        return RoleActions.Magic.Swiftcast;
+            List<uint> replacedActions =
+                [WHM.Raise, AST.Ascend, SGE.Egeiro, SCH.Resurrection];
+            if (!replacedActions.Contains(actionID))
+                return actionID;
+            if (actionID is SCH.Resurrection &&
+                LocalPlayer.ClassJob.RowId is not SCH.JobID)
+                return actionID;
 
-                    if (actionID == WHM.Raise && IsEnabled(CustomComboPreset.WHM_ThinAirRaise) &&
-                        ActionReady(WHM.ThinAir) && !HasStatusEffect(WHM.Buffs.ThinAir))
-                        return WHM.ThinAir;
+            if (ActionReady(RoleActions.Magic.Swiftcast))
+                return RoleActions.Magic.Swiftcast;
 
-                    return actionID;
-                }
+            if (actionID == WHM.Raise &&
+                IsEnabled(CustomComboPreset.WHM_ThinAirRaise) &&
+                ActionReady(WHM.ThinAir) &&
+                !HasStatusEffect(WHM.Buffs.ThinAir))
+                return WHM.ThinAir;
 
-                default:
-                    return actionID;
-            }
+            if (IsEnabled(CustomComboPreset.ALL_Healer_Raise_Retarget))
+                return actionID.Retarget(replacedActions.ToArray(),
+                    SimpleTarget.Stack.AllyToRaise, dontCull: true);
+
+            return actionID;
+        }
+    }
+
+    internal class ALL_Healer_EsunaRetargeting : CustomCombo
+    {
+        protected internal override CustomComboPreset Preset { get; } = CustomComboPreset.ALL_Healer_EsunaRetargeting;
+
+        protected override uint Invoke(uint actionID)
+        {
+            if (actionID is not RoleActions.Healer.Esuna)
+                return actionID;
+
+            RoleActions.Healer.Esuna.Retarget(SimpleTarget.Stack.AllyToEsuna, dontCull: true);
+
+            return actionID;
         }
     }
 
@@ -133,24 +180,32 @@ internal partial class All
 
         protected override uint Invoke(uint actionID)
         {
-            switch (actionID)
-            {
-                case BLU.AngelWhisper or RDM.Verraise:
-                case SMN.Resurrection when LocalPlayer.ClassJob.RowId is SMN.JobID:
-                {
-                    if (HasStatusEffect(RoleActions.Magic.Buffs.Swiftcast) || HasStatusEffect(RDM.Buffs.Dualcast))
-                        return actionID;
+            List<uint> replacedActions =
+                [BLU.AngelWhisper, RDM.Verraise, SMN.Resurrection];
+            if (!replacedActions.Contains(actionID))
+                return actionID;
+            if (actionID is SMN.Resurrection &&
+                LocalPlayer.ClassJob.RowId is not SMN.JobID)
+                return actionID;
 
-                    if (IsOffCooldown(RoleActions.Magic.Swiftcast))
-                        return RoleActions.Magic.Swiftcast;
+            if (HasStatusEffect(RoleActions.Magic.Buffs.Swiftcast) ||
+                HasStatusEffect(RDM.Buffs.Dualcast))
+                if (IsEnabled(CustomComboPreset.ALL_Caster_Raise_Retarget))
+                    return actionID.Retarget(replacedActions.ToArray(),
+                        SimpleTarget.Stack.AllyToRaise, dontCull: true);
+                else
+                    return actionID;
 
-                    if (LocalPlayer.ClassJob.RowId is RDM.JobID &&
-                        ActionReady(RDM.Vercure))
-                        return RDM.Vercure;
+            if (IsOffCooldown(RoleActions.Magic.Swiftcast))
+                return RoleActions.Magic.Swiftcast;
 
-                    break;
-                }
-            }
+            if (LocalPlayer.ClassJob.RowId is RDM.JobID &&
+                ActionReady(RDM.Vercure))
+                return RDM.Vercure;
+
+            if (IsEnabled(CustomComboPreset.ALL_Caster_Raise_Retarget))
+                return actionID.Retarget(replacedActions.ToArray(),
+                    SimpleTarget.Stack.AllyToRaise, dontCull: true);
 
             return actionID;
         }

@@ -12,28 +12,29 @@ internal partial class SAM
         public static UserInt
             SAM_Balance_Content = new("SAM_Balance_Content", 1),
             SAM_Opener_PrePullDelay = new("SAM_Opener_PrePullDelay", 13),
-            SAM_ST_KenkiOvercapAmount = new(nameof(SAM_ST_KenkiOvercapAmount), 65),
+            SAM_ST_KenkiOvercapAmount = new("SAM_ST_KenkiOvercapAmount", 65),
             SAM_ST_Higanbana_Suboption = new("SAM_ST_Higanbana_Suboption", 1),
-            SAM_ST_Higanbana_Threshold = new("SAM_ST_Higanbana_Threshold", 0),
+            SAM_ST_Higanbana_HP_Threshold = new("SAM_ST_Higanbana_HP_Threshold", 0),
+            SAM_ST_Higanbana_Refresh = new("SAM_ST_Higanbana_Refresh", 15),
             SAM_ST_ExecuteThreshold = new("SAM_ST_ExecuteThreshold", 1),
-            SAM_STSecondWindThreshold = new("SAM_STSecondWindThreshold", 25),
-            SAM_STBloodbathThreshold = new("SAM_STBloodbathThreshold", 40),
-            SAM_AoE_KenkiOvercapAmount = new(nameof(SAM_AoE_KenkiOvercapAmount), 50),
-            SAM_AoESecondWindThreshold = new("SAM_AoESecondWindThreshold", 25),
-            SAM_AoEBloodbathThreshold = new("SAM_AoEBloodbathThreshold", 40),
-            SAM_Gekko_KenkiOvercapAmount = new(nameof(SAM_Gekko_KenkiOvercapAmount), 65),
-            SAM_Kasha_KenkiOvercapAmount = new(nameof(SAM_Kasha_KenkiOvercapAmount), 65),
-            SAM_Yukaze_KenkiOvercapAmount = new(nameof(SAM_Yukaze_KenkiOvercapAmount), 65),
-            SAM_Oka_KenkiOvercapAmount = new(nameof(SAM_Oka_KenkiOvercapAmount), 50),
-            SAM_Mangetsu_KenkiOvercapAmount = new(nameof(SAM_Mangetsu_KenkiOvercapAmount), 50),
-            SAM_VariantCure = new("SAM_VariantCure");
+            SAM_STSecondWindThreshold = new("SAM_STSecondWindThreshold", 40),
+            SAM_STBloodbathThreshold = new("SAM_STBloodbathThreshold", 30),
+            SAM_AoE_KenkiOvercapAmount = new("SAM_AoE_KenkiOvercapAmount", 50),
+            SAM_AoESecondWindThreshold = new("SAM_AoESecondWindThreshold", 40),
+            SAM_AoEBloodbathThreshold = new("SAM_AoEBloodbathThreshold", 30),
+            SAM_Gekko_KenkiOvercapAmount = new("SAM_Gekko_KenkiOvercapAmount", 65),
+            SAM_Kasha_KenkiOvercapAmount = new("SAM_Kasha_KenkiOvercapAmount", 65),
+            SAM_Yukaze_KenkiOvercapAmount = new("SAM_Yukaze_KenkiOvercapAmount", 65),
+            SAM_Oka_KenkiOvercapAmount = new("SAM_Oka_KenkiOvercapAmount", 50),
+            SAM_Mangetsu_KenkiOvercapAmount = new("SAM_Mangetsu_KenkiOvercapAmount", 50),
+            SAM_VariantCure = new("SAM_VariantCure", 50);
 
         public static UserBool
-            SAM_Gekko_KenkiOvercap = new(nameof(SAM_Gekko_KenkiOvercap)),
-            SAM_Kasha_KenkiOvercap = new(nameof(SAM_Kasha_KenkiOvercap)),
-            SAM_Yukaze_KenkiOvercap = new(nameof(SAM_Yukaze_KenkiOvercap)),
-            SAM_Oka_KenkiOvercap = new(nameof(SAM_Oka_KenkiOvercap)),
-            SAM_Mangetsu_KenkiOvercap = new(nameof(SAM_Mangetsu_KenkiOvercap));
+            SAM_Gekko_KenkiOvercap = new("SAM_Gekko_KenkiOvercap"),
+            SAM_Kasha_KenkiOvercap = new("SAM_Kasha_KenkiOvercap"),
+            SAM_Yukaze_KenkiOvercap = new("SAM_Yukaze_KenkiOvercap"),
+            SAM_Oka_KenkiOvercap = new("SAM_Oka_KenkiOvercap"),
+            SAM_Mangetsu_KenkiOvercap = new("SAM_Mangetsu_KenkiOvercap");
 
         public static UserBoolArray
             SAM_ST_CDs_IaijutsuOption = new("SAM_ST_CDs_IaijutsuOption");
@@ -57,9 +58,6 @@ internal partial class SAM
 
                     if (SAM_ST_CDs_IaijutsuOption[0])
                     {
-                        DrawSliderInt(0, 10, SAM_ST_Higanbana_Threshold,
-                            $"Stop using {Higanbana.ActionName()} on targets below this HP % (0% = always use).");
-
                         ImGui.Indent();
                         DrawHorizontalRadioButton(SAM_ST_Higanbana_Suboption,
                             "All Enemies", $"Uses {Higanbana.ActionName()} regardless of targeted enemy type.", 0);
@@ -67,6 +65,12 @@ internal partial class SAM
                         DrawHorizontalRadioButton(SAM_ST_Higanbana_Suboption,
                             "Bosses Only", $"Only uses {Higanbana.ActionName()} when the targeted enemy is a boss.", 1);
                         ImGui.Unindent();
+
+                        DrawSliderInt(0, 10, SAM_ST_Higanbana_HP_Threshold,
+                            $"Stop using {Higanbana.ActionName()} on targets below this HP % (0% = always use).");
+
+                        DrawSliderInt(0, 15, SAM_ST_Higanbana_Refresh,
+                            $"Seconds remaining before reapplying {Higanbana.ActionName()}. Set to Zero to disable this check.");
                     }
 
                     break;
@@ -104,14 +108,7 @@ internal partial class SAM
 
                     break;
 
-                case CustomComboPreset.SAM_Variant_Cure:
-                    DrawSliderInt(1, 100, SAM_VariantCure,
-                        "HP% to be at or under", 200);
-
-                    break;
-
                 case CustomComboPreset.SAM_ST_GekkoCombo:
-                {
                     DrawAdditionalBoolChoice(SAM_Gekko_KenkiOvercap,
                         "Kenki Overcap Protection", "Spends Kenki when at the set value or above.");
 
@@ -120,10 +117,8 @@ internal partial class SAM
                             "Kenki Amount", sliderIncrement: SliderIncrements.Fives);
 
                     break;
-                }
 
                 case CustomComboPreset.SAM_ST_KashaCombo:
-                {
                     DrawAdditionalBoolChoice(SAM_Kasha_KenkiOvercap,
                         "Kenki Overcap Protection", "Spends Kenki when at the set value or above.");
 
@@ -132,10 +127,8 @@ internal partial class SAM
                             "Kenki Amount", sliderIncrement: SliderIncrements.Fives);
 
                     break;
-                }
 
                 case CustomComboPreset.SAM_ST_YukikazeCombo:
-                {
                     DrawAdditionalBoolChoice(SAM_Yukaze_KenkiOvercap,
                         "Kenki Overcap Protection", "Spends Kenki when at the set value or above.");
 
@@ -144,10 +137,8 @@ internal partial class SAM
                             "Kenki Amount", sliderIncrement: SliderIncrements.Fives);
 
                     break;
-                }
 
                 case CustomComboPreset.SAM_AoE_OkaCombo:
-                {
                     DrawAdditionalBoolChoice(SAM_Oka_KenkiOvercap,
                         "Kenki Overcap Protection", "Spends Kenki when at the set value or above.");
 
@@ -156,10 +147,8 @@ internal partial class SAM
                             "Kenki Amount", sliderIncrement: SliderIncrements.Fives);
 
                     break;
-                }
 
                 case CustomComboPreset.SAM_AoE_MangetsuCombo:
-                {
                     DrawAdditionalBoolChoice(SAM_Mangetsu_KenkiOvercap,
                         "Kenki Overcap Protection", "Spends Kenki when at the set value or above.");
 
@@ -168,7 +157,12 @@ internal partial class SAM
                             "Kenki Amount", sliderIncrement: SliderIncrements.Fives);
 
                     break;
-                }
+
+                case CustomComboPreset.SAM_Variant_Cure:
+                    DrawSliderInt(1, 100, SAM_VariantCure,
+                        "HP% to be at or under", 200);
+
+                    break;
             }
         }
     }

@@ -1,60 +1,62 @@
 ﻿using Dalamud.Game.ClientState.JobGauge.Enums;
 using Dalamud.Game.ClientState.JobGauge.Types;
-using FFXIVClientStructs.FFXIV.Client.Game;
 using System;
 using System.Collections.Generic;
 using WrathCombo.CustomComboNS;
 using WrathCombo.CustomComboNS.Functions;
+using static FFXIVClientStructs.FFXIV.Client.Game.ActionManager;
 using static WrathCombo.Combos.PvE.VPR.Config;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 namespace WrathCombo.Combos.PvE;
 
 internal partial class VPR
 {
-    internal static VPROpenerMaxLevel1 Opener1 = new();
+    private static float IreCD =>
+        GetCooldownRemainingTime(SerpentsIre);
 
-    #region Config
+    private static bool InRange() =>
+        IsInRange(CurrentTarget, 5f);
 
-    internal static float IreCD => GetCooldownRemainingTime(SerpentsIre);
-
-    internal static bool InRange() => IsInRange(CurrentTarget, 5f);
-    internal static bool CappedOnCoils() =>
+    private static bool MaxCoils() =>
         TraitLevelChecked(Traits.EnhancedVipersRattle) && RattlingCoilStacks > 2 ||
         !TraitLevelChecked(Traits.EnhancedVipersRattle) && RattlingCoilStacks > 1;
 
-    internal static bool HasRattlingCoilStack() => RattlingCoilStacks > 0;
+    private static bool HasRattlingCoilStack() =>
+        RattlingCoilStacks > 0;
 
-    internal static bool HasHindVenom() =>
+    private static bool HasHindVenom() =>
         HasStatusEffect(Buffs.HindstungVenom) ||
         HasStatusEffect(Buffs.HindsbaneVenom);
 
-    internal static bool HasFlankVenom() =>
+    private static bool HasFlankVenom() =>
         HasStatusEffect(Buffs.FlankstungVenom) ||
         HasStatusEffect(Buffs.FlanksbaneVenom);
 
-    internal static bool NoSwiftscaled() => !HasStatusEffect(Buffs.Swiftscaled);
+    private static bool NoSwiftscaled() =>
+        !HasStatusEffect(Buffs.Swiftscaled);
 
-    internal static bool NoHuntersInstinct() => !HasStatusEffect(Buffs.HuntersInstinct);
+    private static bool NoHuntersInstinct() =>
+        !HasStatusEffect(Buffs.HuntersInstinct);
 
-    internal static bool NoVenom() =>
+    private static bool NoVenom() =>
         !HasStatusEffect(Buffs.FlanksbaneVenom) &&
         !HasStatusEffect(Buffs.FlankstungVenom) &&
         !HasStatusEffect(Buffs.HindsbaneVenom) &&
         !HasStatusEffect(Buffs.HindstungVenom);
 
-    #endregion Config
+    #region Reawaken
 
-    #region Awaken
-
-    internal static bool UseReawaken()
+    private static bool CanReawaken(bool simpleMode = false)
     {
         if (LevelChecked(Reawaken) && !HasStatusEffect(Buffs.Reawakened) && InActionRange(Reawaken) &&
-            !HasStatusEffect(Buffs.HuntersVenom) && !HasStatusEffect(Buffs.SwiftskinsVenom) &&
+            !HasStatusEffect(Buffs.HuntersVenom) && !HasStatusEffect(Buffs.SwiftskinsVenom) && HasBattleTarget() &&
             !HasStatusEffect(Buffs.PoisedForTwinblood) && !HasStatusEffect(Buffs.PoisedForTwinfang) &&
             !IsEmpowermentExpiring(6))
         {
             //Use whenever
-            if (SerpentOffering >= 50 && TargetIsBoss() && GetTargetHPPercent() < VPR_ST_ReAwaken_Threshold)
+            if (SerpentOffering >= 50 && TargetIsBoss() &&
+                (simpleMode && GetTargetHPPercent() < 5 ||
+                 !simpleMode && GetTargetHPPercent() < VPR_ST_ReAwaken_Threshold))
                 return true;
 
             //2min burst
@@ -71,9 +73,9 @@ internal partial class VPR
             if (SerpentOffering >= 100)
                 return true;
 
-            //non boss encounters
-            if ((IsEnabled(CustomComboPreset.VPR_ST_SimpleMode) && !InBossEncounter() ||
-                 IsEnabled(CustomComboPreset.VPR_ST_AdvancedMode) && VPR_ST_SerpentsIre_SubOption == 1 && !InBossEncounter()) &&
+            //non-boss encounters
+            if ((simpleMode && !InBossEncounter() ||
+                 !simpleMode && VPR_ST_SerpentsIre_SubOption == 1 && !InBossEncounter()) &&
                 SerpentOffering >= 50)
                 return true;
 
@@ -86,11 +88,12 @@ internal partial class VPR
         return false;
     }
 
-    internal static bool ReawakenComboST(ref uint actionID)
+    private static bool ReawakenCombo(ref uint actionID, bool ST, bool AoE)
     {
-        if (HasStatusEffect(Buffs.Reawakened))
+        if (ST && HasStatusEffect(Buffs.Reawakened))
         {
-                #region Pre Ouroboros
+
+            #region Pre Ouroboros
 
             if (!TraitLevelChecked(Traits.EnhancedSerpentsLineage))
                 switch (AnguineTribute)
@@ -112,9 +115,9 @@ internal partial class VPR
                         return true;
                 }
 
-                #endregion
+            #endregion
 
-                #region With Ouroboros
+            #region With Ouroboros
 
             if (TraitLevelChecked(Traits.EnhancedSerpentsLineage))
                 switch (AnguineTribute)
@@ -140,17 +143,14 @@ internal partial class VPR
                         return true;
                 }
 
-                #endregion
+            #endregion
+
         }
 
-        return false;
-    }
-
-    internal static bool ReawakenComboAoE(ref uint actionID)
-    {
-        if (HasStatusEffect(Buffs.Reawakened))
+        if (AoE && HasStatusEffect(Buffs.Reawakened))
         {
-                #region Pre Ouroboros
+
+            #region Pre Ouroboros
 
             if (!TraitLevelChecked(Traits.EnhancedSerpentsLineage))
                 switch (AnguineTribute)
@@ -172,9 +172,9 @@ internal partial class VPR
                         return true;
                 }
 
-                #endregion
+            #endregion
 
-                #region With Ouroboros
+            #region With Ouroboros
 
             if (TraitLevelChecked(Traits.EnhancedSerpentsLineage))
                 switch (AnguineTribute)
@@ -200,18 +200,20 @@ internal partial class VPR
                         return true;
                 }
 
-                #endregion
+            #endregion
+
         }
+
         return false;
     }
 
-    #endregion
+   #endregion
 
     #region Combos
 
-    internal static float GCD => GetCooldown(OriginalHook(ReavingFangs)).CooldownTotal;
+    private static float GCD => GetCooldown(OriginalHook(ReavingFangs)).CooldownTotal;
 
-    internal static bool IsHoningExpiring(float times)
+    private static bool IsHoningExpiring(float times)
     {
         float gcd = GCD * times;
 
@@ -219,7 +221,7 @@ internal partial class VPR
                HasStatusEffect(Buffs.HonedReavers) && GetStatusEffectRemainingTime(Buffs.HonedReavers) < gcd;
     }
 
-    internal static bool IsVenomExpiring(float times)
+    private static bool IsVenomExpiring(float times)
     {
         float gcd = GCD * times;
 
@@ -229,18 +231,18 @@ internal partial class VPR
                HasStatusEffect(Buffs.HindsbaneVenom) && GetStatusEffectRemainingTime(Buffs.HindsbaneVenom) < gcd;
     }
 
-    internal static bool IsEmpowermentExpiring(float times)
+    private static bool IsEmpowermentExpiring(float times)
     {
         float gcd = GCD * times;
 
         return GetStatusEffectRemainingTime(Buffs.Swiftscaled) < gcd || GetStatusEffectRemainingTime(Buffs.HuntersInstinct) < gcd;
     }
 
-    internal static unsafe bool IsComboExpiring(float times)
+    private static unsafe bool IsComboExpiring(float times)
     {
         float gcd = GCD * times;
 
-        return ActionManager.Instance()->Combo.Timer != 0 && ActionManager.Instance()->Combo.Timer < gcd;
+        return Instance()->Combo.Timer != 0 && Instance()->Combo.Timer < gcd;
     }
 
     #endregion
@@ -249,13 +251,15 @@ internal partial class VPR
 
     internal static WrathOpener Opener()
     {
-        if (Opener1.LevelChecked)
-            return Opener1;
+        if (StandardOpener.LevelChecked)
+            return StandardOpener;
 
         return WrathOpener.Dummy;
     }
 
-    internal class VPROpenerMaxLevel1 : WrathOpener
+    internal static VPRStandardOpener StandardOpener = new();
+
+    internal class VPRStandardOpener : WrathOpener
     {
         public override int MinOpenerLevel => 100;
 
@@ -305,7 +309,7 @@ internal partial class VPR
 
         public override List<(int[], uint, Func<bool>)> SubstitutionSteps { get; set; } =
         [
-            ([33], SwiftskinsCoil, () => OnTargetsRear()),
+            ([33], SwiftskinsCoil, OnTargetsRear),
             ([34], TwinbloodBite, () => HasStatusEffect(Buffs.SwiftskinsVenom)),
             ([35], TwinfangBite, () => HasStatusEffect(Buffs.HuntersVenom)),
             ([36], HuntersCoil, () => SwiftskinsCoilReady),
@@ -330,33 +334,31 @@ internal partial class VPR
 
     #region Gauge
 
-    internal static VPRGauge Gauge = GetJobGauge<VPRGauge>();
+    private static VPRGauge Gauge = GetJobGauge<VPRGauge>();
 
-    internal static byte RattlingCoilStacks => Gauge.RattlingCoilStacks;
+    private static byte RattlingCoilStacks => Gauge.RattlingCoilStacks;
 
-    internal static byte SerpentOffering => Gauge.SerpentOffering;
+    private static byte SerpentOffering => Gauge.SerpentOffering;
 
-    internal static byte AnguineTribute => Gauge.AnguineTribute;
+    private static byte AnguineTribute => Gauge.AnguineTribute;
 
-    internal static DreadCombo DreadCombo => Gauge.DreadCombo;
+    private static DreadCombo DreadCombo => Gauge.DreadCombo;
 
-    internal static bool VicewinderReady => DreadCombo is DreadCombo.Dreadwinder;
+    private static bool VicewinderReady => DreadCombo is DreadCombo.Dreadwinder;
 
-    internal static bool HuntersCoilReady => DreadCombo is DreadCombo.HuntersCoil;
+    private static bool HuntersCoilReady => DreadCombo is DreadCombo.HuntersCoil;
 
-    internal static bool SwiftskinsCoilReady => DreadCombo is DreadCombo.SwiftskinsCoil;
+    private static bool SwiftskinsCoilReady => DreadCombo is DreadCombo.SwiftskinsCoil;
 
-    internal static bool VicepitReady => DreadCombo is DreadCombo.PitOfDread;
+    private static bool VicepitReady => DreadCombo is DreadCombo.PitOfDread;
 
-    internal static bool SwiftskinsDenReady => DreadCombo is DreadCombo.SwiftskinsDen;
+    private static bool SwiftskinsDenReady => DreadCombo is DreadCombo.SwiftskinsDen;
 
-    internal static bool HuntersDenReady => DreadCombo is DreadCombo.HuntersDen;
+    private static bool HuntersDenReady => DreadCombo is DreadCombo.HuntersDen;
 
     #endregion
 
     #region ID's
-
-    public const byte JobID = 41;
 
     public const uint
         ReavingFangs = 34607,
@@ -403,7 +405,9 @@ internal partial class VPR
         FourthGeneration = 34630,
         FourthLegacy = 34643,
         Ouroboros = 34631,
-        LastLash = 34635;
+        LastLash = 34635,
+        TwinfangThresh = 34638,
+        TwinbloodThresh = 34639;
 
     public static class Buffs
     {
@@ -441,4 +445,5 @@ internal partial class VPR
     }
 
     #endregion
+
 }

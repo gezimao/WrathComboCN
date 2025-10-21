@@ -1,9 +1,5 @@
 ﻿#region
-
-using System.Numerics;
 using Dalamud.Interface.Colors;
-using ECommons.ImGuiMethods;
-using ImGuiNET;
 using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Data;
 using WrathCombo.Window.Functions;
@@ -25,75 +21,77 @@ internal partial class WHM
 {
     public static class Config
     {
-        internal static void Draw(CustomComboPreset preset)
+        internal static void Draw(Preset preset)
         {
             switch (preset)
             {
                 #region Single Target DPS
 
-                case CustomComboPreset.WHM_ST_MainCombo:
-                    DrawAdditionalBoolChoice(WHM_ST_MainCombo_Adv,
-                        "Advanced Action Options",
-                        "Change how actions are handled",
-                        isConditionalChoice: true);
-
-                    if (WHM_ST_MainCombo_Adv)
-                    {
-                        ImGui.Indent();
-                        ImGui.Spacing();
-                        DrawHorizontalMultiChoice(WHM_ST_MainCombo_Adv_Actions,
-                            "On Stone/Glare",
-                            "Apply options to all Stones and Glares.",
-                            3, 0);
-                        DrawHorizontalMultiChoice(WHM_ST_MainCombo_Adv_Actions,
-                            "On Aero/Dia",
-                            "Apply options to Aeros and Dia.",
-                            3, 1);
-                        DrawHorizontalMultiChoice(WHM_ST_MainCombo_Adv_Actions,
-                            $"On {Stone2.ActionName()}",
-                            $"Apply options to On {Stone2.ActionName()}.",
-                            3, 2);
-                        ImGui.Unindent();
-                    }
-
+                case Preset.WHM_ST_MainCombo:
+                    DrawHorizontalRadioButton(WHM_ST_MainCombo_Actions, "On Stones/Glares", "Apply options to all Stones and Glares.", 0,
+                        descriptionColor:ImGuiColors.DalamudWhite);
+                    DrawHorizontalRadioButton(WHM_ST_MainCombo_Actions, "On Aeros/Dia", "Apply options to all Aeros And Dia.", 1,
+                        descriptionColor:ImGuiColors.DalamudWhite);
+                    DrawHorizontalRadioButton(WHM_ST_MainCombo_Actions, "On Stone II", "Apply options to Stone II.", 2,
+                        descriptionColor:ImGuiColors.DalamudWhite);
                     break;
 
-                case CustomComboPreset.WHM_ST_MainCombo_Opener:
+                case Preset.WHM_ST_MainCombo_Opener:
                     DrawBossOnlyChoice(WHM_Balance_Content);
                     break;
 
-                case CustomComboPreset.WHM_ST_MainCombo_DoT:
-                    DrawSliderInt(0, 50, WHM_ST_DPS_AeroOption,
-                        targetStopUsingAtDescription,
+                case Preset.WHM_ST_MainCombo_DoT:
+                    DrawSliderInt(0, 100, WHM_ST_DPS_AeroOptionBoss,
+                        targetStopUsingOnBossAtDescription,
                         itemWidth: medium);
 
+                    ImGui.Spacing();
+                    DrawSliderInt(0, 100, WHM_ST_DPS_AeroOptionNonBoss,
+                        targetStopUsingAtDescription,
+                        itemWidth: medium);
+      
                     ImGui.Indent();
-
-                    ImGui.TextWrapped(
-                        "Select what kind of enemies the HP check should be applied to:");
+                    ImGui.TextUnformatted("For Non-Bosses, select what kind of content this applies to:");
                     ImGui.NewLine();
+                    ImGui.Indent();
+                    DrawHorizontalRadioButton(
+                        WHM_ST_DPS_AeroOptionSubOption, "All Content",
+                        "Apply the HP% for Non-Bosses to all content.",
+                        outputValue: (int)EnemyRestriction.AllEnemies,
+                        descriptionColor: ImGuiColors.DalamudWhite
+                    );
+                    DrawHorizontalRadioButton(
+                        WHM_ST_DPS_AeroOptionSubOption, "Boss Only Content",
+                        "Apply the HP% for Non-Bosses, only in Boss content (to adds).\nAlways applies DoTs at any HP outside of Boss content.",
+                        outputValue: (int)EnemyRestriction.OnlyBosses,
+                        descriptionColor: ImGuiColors.DalamudWhite
+                    );
+                    DrawHorizontalRadioButton(
+                        WHM_ST_DPS_AeroOptionSubOption, "Non-Boss Only Content",
+                        "Apply the HP% for Non-Bosses, only outside Boss content.\nAlways applies DoTs at any HP to adds in boss content.",
+                        outputValue: (int)EnemyRestriction.NonBosses,
+                        descriptionColor: ImGuiColors.DalamudWhite
+                    );
 
-                    DrawHorizontalRadioButton(WHM_ST_DPS_AeroOptionSubOption,
-                        "Non-Bosses",
-                        "Only applies the HP check above to non-bosses.\n" +
-                        "Allows you to only stop DoTing early when it's not a boss.",
-                        (int)BossAvoidance.On,
-                        descriptionColor: ImGuiColors.DalamudWhite);
-
-                    DrawHorizontalRadioButton(WHM_ST_DPS_AeroOptionSubOption,
-                        "All Enemies",
-                        "Applies the HP check above to all enemies.",
-                        (int)BossAvoidance.Off,
-                        descriptionColor: ImGuiColors.DalamudWhite);
-
+                    ImGui.Spacing();
+                    ImGui.Unindent();
                     DrawRoundedSliderFloat(0, 4, WHM_ST_MainCombo_DoT_Threshold,
                         reapplyTimeRemainingDescription,
                         itemWidth: little, digits: 1);
 
                     ImGui.Unindent();
                     break;
+                
+                case Preset.WHM_ST_MainCombo_Misery:
+                    DrawHorizontalRadioButton(WHM_ST_MainCombo_Misery_Option, "Hold for Burst", "Will attempt to hold for burst as long as possible without overcapping. \nWill prevent afflatus heals from being possible when at full Blood Lily stacks.", 0, descriptionColor: ImGuiColors.DalamudWhite);
+                    DrawHorizontalRadioButton(WHM_ST_MainCombo_Misery_Option, "Use Immediately", "Will Use Immediately to make sure you are free to use Afflatus heals. ", 1, descriptionColor: ImGuiColors.DalamudWhite);
+                    break;
+                
+                case Preset.WHM_ST_MainCombo_LilyOvercap:
+                    DrawSliderInt(0, 10, WHM_STDPS_LilyOvercap, "Time in Seconds to use Afflatus Rapture before overcapping Lily stacks", itemWidth: medium);
+                    break;
 
-                case CustomComboPreset.WHM_ST_MainCombo_Lucid:
+                case Preset.WHM_ST_MainCombo_Lucid:
                     DrawSliderInt(4000, 9500, WHM_STDPS_Lucid,
                         mpThresholdDescription,
                         itemWidth: medium, SliderIncrements.Hundreds);
@@ -103,23 +101,94 @@ internal partial class WHM
 
                 #region AoE DPS
 
-                case CustomComboPreset.WHM_AoE_DPS_Lucid:
+                case Preset.WHM_AoE_DPS_Lucid:
                     DrawSliderInt(4000, 9500, WHM_AoEDPS_Lucid,
                         mpThresholdDescription,
                         itemWidth: medium, SliderIncrements.Hundreds);
+                    break;
+                
+                case Preset.WHM_AoE_MainCombo_DoT:
+                    DrawSliderInt(0, 100, WHM_AoE_MainCombo_DoT_HPThreshold,
+                        targetStopUsingAtDescription);
+                    ImGui.Indent();
+                    DrawRoundedSliderFloat(0, 5, WHM_AoE_MainCombo_DoT_Reapply,
+                        reapplyTimeRemainingDescription,
+                        itemWidth: little, digits: 1);
+                    ImGui.Unindent();
+                    DrawSliderInt(0, 10, WHM_AoE_MainCombo_DoT_MaxTargets,
+                        "Maximum number of targets to employ multi-dotting ");
+                    break;
+                
+                case Preset.WHM_AoE_DPS_Misery:
+                    DrawHorizontalRadioButton(WHM_AoE_DPS_Misery_Option, "Hold for Burst", "Will attempt to hold for burst as long as possible without overcapping. \nWill prevent afflatus heals from being possible when at full Blood Lily stacks.", 0 ,descriptionColor: ImGuiColors.DalamudWhite);
+                    DrawHorizontalRadioButton(WHM_AoE_DPS_Misery_Option, "Use Immediately", "Will Use Immediately to make sure you are free to use Afflatus heals. ", 1 ,descriptionColor: ImGuiColors.DalamudWhite);
+                    break;
+                
+                case Preset.WHM_AoE_DPS_LilyOvercap:
+                    DrawSliderInt(0, 10, WHM_AoEDPS_LilyOvercap, "Time in Seconds to use Afflatus Rapture before overcapping Lily stacks", itemWidth: medium);
                     break;
 
                 #endregion
 
                 #region Single Target Heals
 
-                case CustomComboPreset.WHM_STHeals:
+                case Preset.WHM_STHeals:
                     DrawAdditionalBoolChoice(WHM_STHeals_IncludeShields,
                         "Include Shields in HP Percent Sliders",
                         "");
                     break;
+                
+                case Preset.WHM_STHeals_Benediction: 
+                    DrawAdditionalBoolChoice(WHM_STHeals_BenedictionWeave,
+                        weaveDescription, "");
+                    DrawSliderInt(1, 100, WHM_STHeals_BenedictionHP,
+                        targetStartUsingAtDescription);
+                    DrawPriorityInput(WHM_ST_Heals_Priority, 9, 0,
+                        $"{Benediction.ActionName()} Priority: ");
+                    break;
 
-                case CustomComboPreset.WHM_STHeals_Regen:
+                case Preset.WHM_STHeals_Tetragrammaton:
+                    DrawAdditionalBoolChoice(WHM_STHeals_TetraBalance, 
+                        "Balance Charges Option", "Will only use if Tetra Charges are greater than or equal to Divine Benison Charges.");
+                    DrawAdditionalBoolChoice(WHM_STHeals_TetraWeave,
+                        weaveDescription, "");
+                    DrawSliderInt(1, 100, WHM_STHeals_TetraHP,
+                        targetStartUsingAtDescription);
+                    DrawPriorityInput(WHM_ST_Heals_Priority, 9, 1,
+                        $"{Tetragrammaton.ActionName()} Priority: ");
+                    break;
+
+                case Preset.WHM_STHeals_Benison:
+                    DrawAdditionalBoolChoice(WHM_STHeals_BenisonBalance, 
+                        "Balance Charges Option", "Will only use if Divine Benison Charges are greater than or equal to Tetragrammaton Charges.");
+                    DrawAdditionalBoolChoice(WHM_STHeals_BenisonWeave,
+                        weaveDescription, "");
+                    DrawSliderInt(0, 1, WHM_STHeals_BenisonCharges, 
+                        chargesToKeepDescription);
+                    DrawSliderInt(1, 100, WHM_STHeals_BenisonHP,
+                        targetStartUsingAtDescription);
+                    DrawPriorityInput(WHM_ST_Heals_Priority, 9, 2,
+                        $"{DivineBenison.ActionName()} Priority: ");
+                    break;
+
+                case Preset.WHM_STHeals_Aquaveil:
+                    DrawHorizontalMultiChoice(WHM_STHeals_AquaveilOptions,"Only Weave", weaveDescription, 3, 0);
+                    DrawHorizontalMultiChoice(WHM_STHeals_AquaveilOptions,"Not On Bosses", nonBossesDescription, 3, 1);
+                    DrawHorizontalMultiChoice(WHM_STHeals_AquaveilOptions,"Tanks Only", "Only on Tanks", 3, 2);
+                    DrawSliderInt(1, 100, WHM_STHeals_AquaveilHP,
+                        targetStartUsingAtDescription);
+                    DrawPriorityInput(WHM_ST_Heals_Priority, 9, 3,
+                        $"{Aquaveil.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_STHeals_Solace:
+                    DrawSliderInt(1, 100, WHM_STHeals_SolaceHP,
+                        targetStartUsingAtDescription);
+                    DrawPriorityInput(WHM_ST_Heals_Priority, 9, 4,
+                        $"{AfflatusSolace.ActionName()} Priority: ");
+                    break;
+
+                case Preset.WHM_STHeals_Regen:
                     ImGui.Indent();
                     DrawRoundedSliderFloat(0f, 6f, WHM_STHeals_RegenTimer,
                         reapplyTimeRemainingDescription,
@@ -129,67 +198,49 @@ internal partial class WHM
                         targetStopUsingAtDescription);
                     DrawSliderInt(0, 100, WHM_STHeals_RegenHPUpper,
                         targetStartUsingAtDescription);
+                    DrawPriorityInput(WHM_ST_Heals_Priority, 9, 5,
+                        $"{Regen.ActionName()} Priority: ");
                     break;
 
-                case CustomComboPreset.WHM_STHeals_Benediction:
-                    DrawAdditionalBoolChoice(WHM_STHeals_BenedictionWeave,
-                        weaveDescription, "");
-                    DrawSliderInt(1, 100, WHM_STHeals_BenedictionHP,
+                case Preset.WHM_STHeals_Temperance:
+                    DrawSliderInt(1, 100, WHM_STHeals_TemperanceHP,
                         targetStartUsingAtDescription);
-                    DrawPriorityInput(WHM_ST_Heals_Priority, 5, 0,
-                        $"{Benediction.ActionName()} Priority: ");
+                    DrawHorizontalMultiChoice(WHM_STHeals_TemperanceOptions,"Only Weave", weaveDescription, 2, 0);
+                    DrawHorizontalMultiChoice(WHM_STHeals_TemperanceOptions,"Not On Bosses", nonBossesDescription, 2, 1);
+                    DrawPriorityInput(WHM_ST_Heals_Priority, 9, 6,
+                        $"{Temperance.ActionName()} Priority: ");
                     break;
-
-                case CustomComboPreset.WHM_STHeals_ThinAir:
+                
+                case Preset.WHM_STHeals_Asylum:
+                    DrawSliderInt(1, 100, WHM_STHeals_AsylumHP,
+                        targetStartUsingAtDescription);
+                    DrawHorizontalMultiChoice(WHM_STHeals_AsylumOptions,"Only Weave", weaveDescription, 2, 0);
+                    DrawHorizontalMultiChoice(WHM_STHeals_AsylumOptions,"Not On Bosses", nonBossesDescription, 2, 1);
+                    DrawPriorityInput(WHM_ST_Heals_Priority, 9, 7,
+                        $"{Asylum.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_STHeals_LiturgyOfTheBell:
+                    DrawSliderInt(1, 100, WHM_STHeals_LiturgyOfTheBellHP,
+                        targetStartUsingAtDescription);
+                    DrawHorizontalMultiChoice(WHM_STHeals_LiturgyOfTheBellOptions,"Only Weave", weaveDescription, 2, 0);
+                    DrawHorizontalMultiChoice(WHM_STHeals_LiturgyOfTheBellOptions,"Not On Bosses", nonBossesDescription, 2, 1);
+                    DrawPriorityInput(WHM_ST_Heals_Priority, 9, 8,
+                        $"{LiturgyOfTheBell.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_STHeals_ThinAir:
                     DrawSliderInt(0, 1, WHM_STHeals_ThinAir,
                         chargesToKeepDescription);
                     break;
-
-                case CustomComboPreset.WHM_STHeals_Tetragrammaton:
-                    DrawAdditionalBoolChoice(WHM_STHeals_TetraWeave,
-                        weaveDescription, "");
-                    DrawSliderInt(1, 100, WHM_STHeals_TetraHP,
-                        targetStartUsingAtDescription);
-                    DrawPriorityInput(WHM_ST_Heals_Priority, 5, 1,
-                        $"{Tetragrammaton.ActionName()} Priority: ");
-                    break;
-
-                case CustomComboPreset.WHM_STHeals_Benison:
-                    DrawAdditionalBoolChoice(WHM_STHeals_BenisonWeave,
-                        weaveDescription, "");
-                    DrawSliderInt(1, 100, WHM_STHeals_BenisonHP,
-                        targetStartUsingAtDescription);
-                    DrawPriorityInput(WHM_ST_Heals_Priority, 5, 2,
-                        $"{DivineBenison.ActionName()} Priority: ");
-                    break;
-
-                case CustomComboPreset.WHM_STHeals_Aquaveil:
-                    DrawAdditionalBoolChoice(WHM_STHeals_AquaveilWeave,
-                        weaveDescription, "");
-                    DrawSliderInt(1, 100, WHM_STHeals_AquaveilHP,
-                        targetStartUsingAtDescription);
-                    DrawPriorityInput(WHM_ST_Heals_Priority, 5, 3,
-                        $"{Aquaveil.ActionName()} Priority: ");
-                    break;
-
-                case CustomComboPreset.WHM_STHeals_Lucid:
+                
+                case Preset.WHM_STHeals_Lucid:
                     DrawSliderInt(4000, 9500, WHM_STHeals_Lucid,
                         mpThresholdDescription,
                         itemWidth: medium, SliderIncrements.Hundreds);
                     break;
 
-                case CustomComboPreset.WHM_STHeals_Temperance:
-                    DrawSliderInt(1, 100, WHM_STHeals_TemperanceHP,
-                        targetStartUsingAtDescription);
-                    DrawDifficultyMultiChoice(WHM_STHeals_TemperanceDifficulty, WHM_STHeals_TemperanceDifficultyListSet,
-                        "Select what content difficulties Temperance should be used in:");
-                    DrawAdditionalBoolChoice(WHM_STHeals_TemperanceWeave,
-                        weaveDescription, "");
-                    DrawPriorityInput(WHM_ST_Heals_Priority, 5, 4,
-                        $"{Temperance.ActionName()} Priority: ");
-                    break;
-
-                case CustomComboPreset.WHM_STHeals_Esuna:
+                case Preset.WHM_STHeals_Esuna:
                     DrawSliderInt(0, 100, WHM_STHeals_Esuna,
                         targetStopUsingAtDescription);
                     break;
@@ -197,109 +248,160 @@ internal partial class WHM
                 #endregion
 
                 #region AoE Heals
-
-                case CustomComboPreset.WHM_AoEHeals_ThinAir:
-                    DrawSliderInt(0, 1, WHM_AoEHeals_ThinAir,
-                        chargesToKeepDescription);
-                    break;
-
-                case CustomComboPreset.WHM_AoEHeals_Cure3:
-                    DrawSliderInt(1500, 8500, WHM_AoEHeals_Cure3MP,
-                        "MP to be over",
-                        sliderIncrement: 500);
-                    break;
-
-                case CustomComboPreset.WHM_AoEHeals_Assize:
-                    DrawAdditionalBoolChoice(WHM_AoEHeals_AssizeWeave,
-                        weaveDescription, "");
-                    break;
-
-                case CustomComboPreset.WHM_AoEHeals_Plenary:
-                    DrawAdditionalBoolChoice(WHM_AoEHeals_PlenaryWeave,
-                        weaveDescription,
-                        "");
-                    break;
-
-                case CustomComboPreset.WHM_AoEHeals_Temperance:
-                    DrawSliderInt(1, 100, WHM_AoEHeals_TemperanceHP,
-                        "Average party HP% to use at or below");
-                    DrawDifficultyMultiChoice(WHM_AoEHeals_TemperanceDifficulty, WHM_AoEHeals_TemperanceDifficultyListSet,
-                        "Select what content difficulties Temperance should be used in:");
-                    ImGui.Spacing();
-                    
-                    DrawAdditionalBoolChoice(WHM_AoEHeals_TemperanceWeave,
-                        weaveDescription,
-                        "");
-                    
-                    DrawAdditionalBoolChoice(WHM_AoEHeals_TemperanceRaidwide,
-                        "Also use for Raidwides",
-                        "Will also use for mitigation before raidwides (and a healing boost after them), if the party is low enough.",
-                        indentDescription: true);
-                    if (WHM_AoEHeals_TemperanceRaidwide)
-                    {
-                        ImGui.Indent();
-                        DrawDifficultyMultiChoice(WHM_AoEHeals_TemperanceRaidwideDifficulty, WHM_AoEHeals_TemperanceRaidwideDifficultyListSet,
-                            "Select what content difficulties the Raidwide option should apply to:");
-                    
-                        DrawAdditionalBoolChoice(WHM_AoEHeals_TemperanceRaidwidePrioritization,
-                            "Prioritize use for Raidwides",
-                            "Will ignore the Party HP% check for Raidwides, essentially using Temperance for mitigation.\n" +
-                            "Not advised in higher-end content.",
-                            indentDescription: true);
-                        ImGui.Unindent();
-                    }
-                    break;
-
-                case CustomComboPreset.WHM_AoEHeals_Lucid:
-                    DrawSliderInt(4000, 9500, WHM_AoEHeals_Lucid,
-                        mpThresholdDescription,
-                        itemWidth: medium, SliderIncrements.Hundreds);
-                    break;
-
-                case CustomComboPreset.WHM_AoEHeals_Medica2:
+                
+                case Preset.WHM_AoEHeals_Medica2: 
+                    DrawSliderInt(1, 100, WHM_AoEHeals_Medica2HP,
+                        partyStartUsingAtDescription);
                     ImGui.Indent();
                     DrawRoundedSliderFloat(0f, 6f, WHM_AoEHeals_MedicaTime,
                         reapplyTimeRemainingDescription,
                         itemWidth: little);
                     ImGui.Unindent();
+                    DrawPriorityInput(WHM_AoE_Heals_Priority, 9, 0,
+                        $"{Medica2.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_AoEHeals_Cure3:
+                    DrawSliderInt(1, 100, WHM_AoEHeals_Cure3HP,
+                        partyStartUsingAtDescription);
+                    DrawSliderInt(2, 8, WHM_AoEHeals_Cure3Allies,
+                        "Minimum Number of allies in range of Cure 3 target");
+                    DrawSliderInt(1500, 8500, WHM_AoEHeals_Cure3MP,
+                        "MP to be over",
+                        sliderIncrement: 500);
+                    DrawPriorityInput(WHM_AoE_Heals_Priority, 9, 1,
+                        $"{Cure3.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_AoEHeals_Plenary:
+                    DrawSliderInt(1, 100, WHM_AoEHeals_PlenaryHP,
+                        partyStartUsingAtDescription);
+                    DrawAdditionalBoolChoice(WHM_AoEHeals_PlenaryWeave,
+                        weaveDescription,
+                        "");
+                    DrawPriorityInput(WHM_AoE_Heals_Priority, 9, 2,
+                        $"{PlenaryIndulgence.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_AoEHeals_Temperance:
+                    DrawSliderInt(1, 100, WHM_AoEHeals_TemperanceHP, 
+                        partyStartUsingAtDescription);
+                    DrawAdditionalBoolChoice(WHM_AoEHeals_TemperanceWeave,
+                        weaveDescription,
+                        "");
+                    DrawDifficultyMultiChoice(WHM_AoEHeals_TemperanceDifficulty,
+                        WHM_AoEHeals_TemperanceDifficultyListSet,
+                        "Select what content difficulties Temperance should be used in:");
+                    DrawPriorityInput(WHM_AoE_Heals_Priority, 9, 3,
+                        $"{Temperance.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_AoEHeals_Asylum:
+                    DrawSliderInt(1, 100, WHM_AoEHeals_AsylumHP, 
+                        partyStartUsingAtDescription);
+                    DrawAdditionalBoolChoice(WHM_AoEHeals_AsylumWeave,
+                        weaveDescription,
+                        "");
+                    DrawDifficultyMultiChoice(WHM_AoEHeals_AsylumDifficulty,
+                        WHM_AoEHeals_AsylumDifficultyListSet,
+                        "Select what content difficulties Asylum should be used in:");
+                    DrawPriorityInput(WHM_AoE_Heals_Priority, 9, 4,
+                        $"{Asylum.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_AoEHeals_LiturgyOfTheBell:
+                    DrawSliderInt(1, 100, WHM_AoEHeals_LiturgyHP, 
+                        partyStartUsingAtDescription);
+                    DrawAdditionalBoolChoice(WHM_AoEHeals_LiturgyWeave,
+                        weaveDescription,
+                        "");
+                    DrawDifficultyMultiChoice(WHM_AoEHeals_LiturgyDifficulty,
+                        WHM_AoEHeals_LiturgyDifficultyListSet,
+                        "Select what content difficulties LiturgyOfTheBell should be used in:");
+                    DrawPriorityInput(WHM_AoE_Heals_Priority, 9, 5,
+                        $"{LiturgyOfTheBell.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_AoEHeals_Rapture:
+                    DrawSliderInt(1, 100, WHM_AoEHeals_RaptureHP,
+                        partyStartUsingAtDescription);
+                    DrawPriorityInput(WHM_AoE_Heals_Priority, 9, 6,
+                        $"{AfflatusRapture.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_AoEHeals_Assize:
+                    DrawSliderInt(1, 100, WHM_AoEHeals_AssizeHP,
+                        partyStartUsingAtDescription);
+                    DrawAdditionalBoolChoice(WHM_AoEHeals_AssizeWeave,
+                        weaveDescription, "");
+                    DrawPriorityInput(WHM_AoE_Heals_Priority, 9, 7,
+                        $"{Assize.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.WHM_AoEHeals_DivineCaress:
+                    DrawSliderInt(1, 100, WHM_AoEHeals_DivineCaressHP,
+                        partyStartUsingAtDescription);
+                    DrawAdditionalBoolChoice(WHM_AoEHeals_DivineCaressWeave,
+                        weaveDescription, "");
+                    DrawPriorityInput(WHM_AoE_Heals_Priority, 9, 8,
+                        $"{DivineCaress.ActionName()} Priority: ");
                     break;
 
-                case CustomComboPreset.WHM_AoEHeals_LiturgyOfTheBell:
-                    DrawDifficultyMultiChoice(WHM_AoEHeals_LiturgyDifficulty, WHM_AoEHeals_LiturgyDifficultyListSet,
-                        "Select what content difficulties Liturgy of the Bell should be used in:");
+                case Preset.WHM_AoEHeals_ThinAir:
+                    DrawSliderInt(0, 1, WHM_AoEHeals_ThinAir,
+                        chargesToKeepDescription);
+                    break;
+
+                case Preset.WHM_AoEHeals_Lucid:
+                    DrawSliderInt(4000, 9500, WHM_AoEHeals_Lucid,
+                        mpThresholdDescription,
+                        itemWidth: medium, SliderIncrements.Hundreds);
+                    break;
+                
+                #endregion
+
+                #region Mitigation Features
+
+                case Preset.WHM_Mit_ST:
+                    DrawHorizontalMultiChoice(WHM_AquaveilOptions,
+                        "Include Divine Benison", "Will add Divine Benison for more mitigation.", 2, 0);
                     ImGui.NewLine();
-
-                    DrawAdditionalBoolChoice(WHM_AoEHeals_LiturgyRaidwideOnly,
-                        "Only use when a Raidwide is casting",
-                        "Will not use Liturgy of the Bell in the rotation unless we detect a Raidwide is casting.",
-                        indentDescription: true);
-
-                    if (WHM_AoEHeals_LiturgyRaidwideOnly)
+                    DrawHorizontalMultiChoice(WHM_AquaveilOptions,
+                        "Include Tetragrammaton", "Will add Tetragrammaton to top off targets health.", 2, 1);
+                    if (WHM_AquaveilOptions[1])
                     {
-                        ImGuiEx.Spacing(new Vector2(30f, 0f));
-                        ImGui.Text("Against what enemies should we check for Raidwides:");
-                        ImGui.NewLine();
-                        DrawRadioButton(
-                            WHM_AoEHeals_LiturgyRaidwideOnlyBoss, "All Enemies",
-                            "Will check for a Raidwide before using Bell at all times, on all enemies.",
-                            outputValue: (int) BossRequirement.Off, itemWidth: 125f,
-                            descriptionAsTooltip: true);
-                        DrawRadioButton(
-                            WHM_AoEHeals_LiturgyRaidwideOnlyBoss, "Only Bosses",
-                            "Will try to only check for Raidwide when fighting bosses.\n" +
-                            "(will use on cooldown versus regular enemies)\n" +
-                            "(Note: don't rely on this 100%, square sometimes marks enemies inconsistently)",
-                            outputValue: (int) BossRequirement.On, itemWidth: 125f,
-                            descriptionAsTooltip: true);
+                        ImGui.Indent();
+                        DrawSliderInt(1, 100, WHM_Aquaveil_TetraThreshold,
+                            "Target HP% to use Tetra below)");
+                        ImGui.Unindent();
                     }
                     break;
 
-                case CustomComboPreset.WHM_AoEHeals_Asylum:
-                    DrawAdditionalBoolChoice(WHM_AoEHeals_AsylumRaidwideOnly,
-                        "Only use when a Raidwide is casting",
-                        "Will not use Asylum in the rotation unless we detect a Raidwide is casting.");
+                #endregion
+                
+                #region Retargeting Features
+                
+                case Preset.WHM_Re_Asylum:
+                    ImGui.Indent();
+                    ImGui.TextColored(ImGuiColors.DalamudGrey, "Options to try to Retarget Asylum to before Self:");
+                    ImGui.Unindent();
+                    DrawHorizontalMultiChoice(WHM_AsylumOptions,
+                        "Enemy Hard Target", "Will place at hard target if enemy", 3, 0);
+                    DrawHorizontalMultiChoice(WHM_AsylumOptions,
+                        "Ally Hard Target", "Will place at hard target if ally", 3, 1);
                     break;
-
+                
+                case Preset.WHM_Re_LiturgyOfTheBell:
+                    ImGui.Indent();
+                    ImGui.TextColored(ImGuiColors.DalamudGrey, "Options to try to Retarget Liturgy of the Bell to before Self:");
+                    ImGui.Unindent();
+                    DrawHorizontalMultiChoice(WHM_LiturgyOfTheBellOptions,
+                        "Enemy Hard Target", "Will place at hard target if enemy", 2, 0);
+                    DrawHorizontalMultiChoice(WHM_LiturgyOfTheBellOptions,
+                        "Ally Hard Target", "Will place at hard target if ally", 2, 1);
+                    break;
+                    
+                
                 #endregion
             }
         }
@@ -315,10 +417,18 @@ internal partial class WHM
         /// Bar Description for target HP% to start using plus disable text
         private const string targetStartUsingAtDescription =
             "Target HP% to use at or below (100 = Disable check)";
+        
+        /// Bar Description for Party HP%  Average to start using plus disable text
+        private const string partyStartUsingAtDescription =
+            "Start using when below party average HP% (100 = Disable check)";
 
         /// Bar Description for target HP% to start using plus disable text
         private const string targetStopUsingAtDescription =
-            "Target HP% to stop using (0 = Use Always)";
+            " Target HP% to stop using (0 = Use Always, 100 = Never)";
+
+        /// Bar Description for target HP% to start using plus disable text
+        private const string targetStopUsingOnBossAtDescription =
+            " Bosses HP% to stop using (0 = Use Always, 100 = Never)";
 
         /// Description for MP threshold
         private const string mpThresholdDescription =
@@ -336,8 +446,8 @@ internal partial class WHM
         private const string weaveDescription =
             "Only Weave";
 
-        private const string mouseoverCheckingDescription =
-            "Party UI Mouseover Checking";
+        private const string nonBossesDescription =
+            "Will not use on ST in Boss encounters.";
 
         /// <summary>
         ///     Whether abilities should be restricted to bosses or not.
@@ -351,10 +461,11 @@ internal partial class WHM
         /// <summary>
         ///     Enemy type restriction for HP threshold checks.
         /// </summary>
-        internal enum BossAvoidance
+        internal enum EnemyRestriction
         {
-            On = 0,
-            Off = 1,
+            NonBosses = 0,
+            AllEnemies = 1,
+            OnlyBosses = 2,
         }
 
         #endregion
@@ -364,25 +475,14 @@ internal partial class WHM
         #region Single Target DPS
 
         /// <summary>
-        ///     Enable advanced replacement action options for single target combo.
+        ///     Button Selection for single target DPS.
         /// </summary>
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_ST_MainCombo" />
-        internal static UserBool WHM_ST_MainCombo_Adv =
-            new("WHM_ST_MainCombo_Adv");
-
-        /// <summary>
-        ///     Advanced action replacement options for main combo.
-        /// </summary>
-        /// <value>
-        ///     <b>Default</b>: [] <br />
-        ///     <b>Options</b>: Boolean array for action replacement selections
-        /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_ST_MainCombo" />
-        public static UserBoolArray WHM_ST_MainCombo_Adv_Actions =
-            new("WHM_ST_MainCombo_Adv_Actions");
+        /// <seealso cref="Preset.WHM_ST_MainCombo" />
+        public static UserInt WHM_ST_MainCombo_Actions =
+            new("WHM_ST_MainCombo_Actions");
 
         /// <summary>
         ///     Content type of Balance Opener.
@@ -392,21 +492,33 @@ internal partial class WHM
         ///     <b>Options</b>: All Content or
         ///     <see cref="ContentCheck.IsInBossOnlyContent" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_ST_MainCombo_Opener" />
-        internal static UserInt WHM_Balance_Content =
+        /// <seealso cref="Preset.WHM_ST_MainCombo_Opener" />
+        public static UserInt WHM_Balance_Content =
             new("WHM_Balance_Content", 0);
 
         /// <summary>
-        ///     HP threshold to stop applying DoTs.
+        ///     HP threshold to stop applying DoTs on Bosses.
         /// </summary>
         /// <value>
         ///     <b>Default</b>: 0 <br />
-        ///     <b>Range</b>: 0 - 50 <br />
+        ///     <b>Range</b>: 0 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_ST_MainCombo_DoT" />
-        internal static UserInt WHM_ST_DPS_AeroOption =
-            new("WHM_ST_DPS_AeroOption");
+        /// <seealso cref="Preset.WHM_ST_MainCombo_DoT" />
+        public static UserInt WHM_ST_DPS_AeroOptionBoss =
+            new("WHM_ST_DPS_AeroOptionBoss");
+
+        /// <summary>
+        ///     HP threshold to stop applying DoTs on Non-Bosses.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 0 <br />
+        ///     <b>Range</b>: 0 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_ST_MainCombo_DoT" />
+        public static UserInt WHM_ST_DPS_AeroOptionNonBoss =
+            new("WHM_ST_DPS_AeroOptionNonBoss", 50);
 
         /// <summary>
         ///     Time threshold in seconds before reapplying DoT.
@@ -416,20 +528,35 @@ internal partial class WHM
         ///     <b>Range</b>: 0 - 4 <br />
         ///     <b>Step</b>: 0.1
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_ST_MainCombo_DoT" />
-        internal static UserFloat WHM_ST_MainCombo_DoT_Threshold =
+        /// <seealso cref="Preset.WHM_ST_MainCombo_DoT" />
+        public static UserFloat WHM_ST_MainCombo_DoT_Threshold =
             new("WHM_ST_MainCombo_DoT_Threshold", 0);
 
         /// <summary>
         ///     Enemy type to apply the HP threshold check to.
         /// </summary>
         /// <value>
-        ///     <b>Default</b>: <see cref="BossAvoidance.On" /> <br />
-        ///     <b>Options</b>: <see cref="BossAvoidance">BossAvoidance Enum</see>
+        ///     <b>Default</b>: <see cref="EnemyRestriction.AllEnemies" /> <br />
+        ///     <b>Options</b>: <see cref="EnemyRestriction">EnemyRestriction Enum</see>
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_ST_MainCombo_DoT" />
-        internal static UserInt WHM_ST_DPS_AeroOptionSubOption =
-            new("WHM_ST_DPS_AeroOptionSubOption", (int)BossAvoidance.On);
+        /// <seealso cref="Preset.WHM_ST_MainCombo_DoT" />
+        public static UserInt WHM_ST_DPS_AeroOptionSubOption =
+            new("WHM_ST_DPS_AeroOptionSubOption", (int)EnemyRestriction.AllEnemies);
+        
+        /// <summary>
+        ///     Pooling option for Afflatus Misery. Default 1 = Use Immediately, 0 = Hold for Burst
+        /// </summary>
+        /// <seealso cref="Preset.WHM_ST_MainCombo_Misery" />
+        public static UserInt WHM_ST_MainCombo_Misery_Option = 
+            new("WHM_ST_MainCombo_Misery_Option", 1);
+        
+        /// <summary>
+        ///     Overcap Prevention Slider for Afflatus Rapture
+        ///     Default 8 = Use Rapture if Lily will overcap in 8 seconds
+        /// </summary>
+        /// <seealso cref="Preset.WHM_ST_MainCombo_LilyOvercap" />
+        public static UserInt WHM_STDPS_LilyOvercap = 
+            new("WHM_STDPS_LilyOvercap", 8);
 
         /// <summary>
         ///     MP threshold to use Lucid Dreaming in single target rotations.
@@ -439,8 +566,8 @@ internal partial class WHM
         ///     <b>Range</b>: 4000 - 9500 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Hundreds" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_ST_MainCombo_Lucid" />
-        internal static UserInt WHM_STDPS_Lucid =
+        /// <seealso cref="Preset.WHM_ST_MainCombo_Lucid" />
+        public static UserInt WHM_STDPS_Lucid =
             new("WHMLucidDreamingFeature", 6500);
 
         #endregion
@@ -455,13 +582,64 @@ internal partial class WHM
         ///     <b>Range</b>: 4000 - 9500 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Hundreds" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoE_DPS_Lucid" />
-        internal static UserInt WHM_AoEDPS_Lucid =
+        /// <seealso cref="Preset.WHM_AoE_DPS_Lucid" />
+        public static UserInt WHM_AoEDPS_Lucid =
             new("WHM_AoE_Lucid", 6500);
+        
+        /// <summary>
+        ///     Reapplication Threshold for AoE Multi-DoTing
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 0 <br />
+        ///     <b>Range</b>: 0 - 5<br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoE_MainCombo_DoT" />
+        public static UserFloat WHM_AoE_MainCombo_DoT_Reapply =
+            new("WHM_AoE_MainCombo_DoT_Reapply", 0);
+        
+        /// <summary>
+        ///     Health Threshold to stop Multi-DoTing
+        /// </summary> 
+        /// <value>
+        ///     <b>Default</b>: 50 <br />
+        ///     <b>Range</b>: 0 - 100<br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoE_MainCombo_DoT" />
+        public static UserInt WHM_AoE_MainCombo_DoT_HPThreshold = 
+            new("WHM_AoE_MainCombo_DoT_HPThreshold", 50);
+        
+        /// <summary>
+        ///     Max Targets for AoE Multi-DoTing
+        /// </summary> 
+        /// <value>
+        ///     <b>Default</b>: 4 <br />
+        ///     <b>Range</b>: 0 - 10<br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoE_MainCombo_DoT" />
+        public static UserInt WHM_AoE_MainCombo_DoT_MaxTargets = 
+            new("WHM_AoE_MainCombo_DoT_MaxTargets", 4);
+        
+        /// <summary>
+        ///     Pooling option for Afflatus Misery. Default 1 = Use Immediately, 0 = Hold for Burst
+        /// </summary>
+        /// <seealso cref="Preset.WHM_AoE_DPS_Misery" />
+        public static UserInt WHM_AoE_DPS_Misery_Option = 
+            new("WHM_AoE_DPS_Misery_Option", 1);
+        
+        /// <summary>
+        ///     Overcap Prevention Slider for Afflatus Rapture
+        ///     Default 8 = Use Rapture if Lily will overcap in 8 seconds
+        /// </summary>
+        /// <seealso cref="Preset.WHM_AoE_DPS_LilyOvercap" />
+        public static UserInt WHM_AoEDPS_LilyOvercap = 
+            new("WHM_AoEDPS_LilyOvercap", 8);
 
         #endregion
 
-        #region Single Target Heals
+        #region Single Target Heals 
 
         /// <summary>
         ///     Include shields when calculating HP percentages.
@@ -469,15 +647,15 @@ internal partial class WHM
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals" />
-        internal static UserBool WHM_STHeals_IncludeShields =
+        /// <seealso cref="Preset.WHM_STHeals" />
+        public static UserBool WHM_STHeals_IncludeShields =
             new("WHM_STHeals_IncludeShields", false);
 
         /// <summary>
         ///     Priority order for single target healing abilities.
         /// </summary>
-        internal static UserIntArray WHM_ST_Heals_Priority =
-            new("WHM_ST_Heals_Priority");
+        public static UserIntArray WHM_ST_Heals_Priority =
+            new("WHM_ST_Heals_Priority", [1,8,7,6,9,5,2,3,4]);
 
         /// <summary>
         ///     Time threshold in seconds before refreshing Regen.
@@ -487,8 +665,8 @@ internal partial class WHM
         ///     <b>Range</b>: 0 - 6 <br />
         ///     <b>Step</b>: 0.1
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Regen" />
-        internal static UserFloat WHM_STHeals_RegenTimer =
+        /// <seealso cref="Preset.WHM_STHeals_Regen" />
+        public static UserFloat WHM_STHeals_RegenTimer =
             new("WHM_STHeals_RegenTimer", 0);
 
         /// <summary>
@@ -499,10 +677,10 @@ internal partial class WHM
         ///     <b>Range</b>: 0 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Regen" />
-        internal static UserInt WHM_STHeals_RegenHPLower =
+        /// <seealso cref="Preset.WHM_STHeals_Regen" />
+        public static UserInt WHM_STHeals_RegenHPLower =
             new("WHM_STHeals_RegenHPLower", 30);
-        
+
         /// <summary>
         ///     Upper HP threshold to start using Regen.
         /// </summary>
@@ -511,8 +689,8 @@ internal partial class WHM
         ///     <b>Range</b>: 0 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Regen" />
-        internal static UserInt WHM_STHeals_RegenHPUpper =
+        /// <seealso cref="Preset.WHM_STHeals_Regen" />
+        public static UserInt WHM_STHeals_RegenHPUpper =
             new("WHM_STHeals_RegenHPUpper", 100);
 
         /// <summary>
@@ -521,8 +699,8 @@ internal partial class WHM
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Benediction" />
-        internal static UserBool WHM_STHeals_BenedictionWeave =
+        /// <seealso cref="Preset.WHM_STHeals_Benediction" />
+        public static UserBool WHM_STHeals_BenedictionWeave =
             new("WHM_STHeals_BenedictionWeave", false);
 
         /// <summary>
@@ -533,9 +711,22 @@ internal partial class WHM
         ///     <b>Range</b>: 1 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Benediction" />
-        internal static UserInt WHM_STHeals_BenedictionHP =
+        /// <seealso cref="Preset.WHM_STHeals_Benediction" />
+        public static UserInt WHM_STHeals_BenedictionHP =
             new("WHM_STHeals_BenedictionHP", 40);
+        
+        /// <summary>
+        ///     HP threshold to use Afflatus Solace.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 99 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_STHeals_Solace" />
+        
+        public static UserInt WHM_STHeals_SolaceHP = 
+            new("WHM_STHeals_SolaceHP", 80);
 
         /// <summary>
         ///     Number of Thin Air charges to reserve.
@@ -545,8 +736,8 @@ internal partial class WHM
         ///     <b>Range</b>: 0 - 1 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_ThinAir" />
-        internal static UserInt WHM_STHeals_ThinAir =
+        /// <seealso cref="Preset.WHM_STHeals_ThinAir" />
+        public static UserInt WHM_STHeals_ThinAir =
             new("WHM_STHeals_ThinAir", 0);
 
         /// <summary>
@@ -555,9 +746,19 @@ internal partial class WHM
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Tetragrammaton" />
-        internal static UserBool WHM_STHeals_TetraWeave =
+        /// <seealso cref="Preset.WHM_STHeals_Tetragrammaton" />
+        public static UserBool WHM_STHeals_TetraWeave =
             new("WHM_STHeals_TetraWeave", false);
+        
+        
+        /// <summary>
+        ///     Only use Tetragrammaton when it has greater than or equal charges to divine Benison
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: false
+        /// </value>
+        /// <seealso cref="Preset.WHM_STHeals_Tetragrammaton" />
+        public static UserBool WHM_STHeals_TetraBalance = new("WHM_STHeals_TetraBalance", false);
 
         /// <summary>
         ///     HP threshold to use Tetragrammaton.
@@ -567,8 +768,8 @@ internal partial class WHM
         ///     <b>Range</b>: 1 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Tetragrammaton" />
-        internal static UserInt WHM_STHeals_TetraHP =
+        /// <seealso cref="Preset.WHM_STHeals_Tetragrammaton" />
+        public static UserInt WHM_STHeals_TetraHP =
             new("WHM_STHeals_TetraHP", 50);
 
         /// <summary>
@@ -577,9 +778,31 @@ internal partial class WHM
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Benison" />
-        internal static UserBool WHM_STHeals_BenisonWeave =
+        /// <seealso cref="Preset.WHM_STHeals_Benison" />
+        public static UserBool WHM_STHeals_BenisonWeave =
             new("WHM_STHeals_BenisonWeave", false);
+        
+        /// <summary>
+        ///     Only use Divine Benison when it has greater than or equal charges to Tetragrammaton
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: false
+        /// </value>
+        /// <seealso cref="Preset.WHM_STHeals_Benison" />
+        
+        public static UserBool WHM_STHeals_BenisonBalance = new("WHM_STHeals_BenisonBalance", false);
+        
+        /// <summary>
+        ///     Charges to keep of Divine Benison.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 0 <br />
+        ///     <b>Range</b>: 0 - 1 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_STHeals_Benison" />
+        public static UserInt WHM_STHeals_BenisonCharges =
+            new("WHM_STHeals_BenisonCharges", 0);
 
         /// <summary>
         ///     HP threshold to use Divine Benison.
@@ -589,8 +812,8 @@ internal partial class WHM
         ///     <b>Range</b>: 1 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Benison" />
-        internal static UserInt WHM_STHeals_BenisonHP =
+        /// <seealso cref="Preset.WHM_STHeals_Benison" />
+        public static UserInt WHM_STHeals_BenisonHP =
             new("WHM_STHeals_BenisonHP", 99);
 
         /// <summary>
@@ -601,19 +824,19 @@ internal partial class WHM
         ///     <b>Range</b>: 1 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Aquaveil" />
-        internal static UserInt WHM_STHeals_AquaveilHP =
+        /// <seealso cref="Preset.WHM_STHeals_Aquaveil" />
+        public static UserInt WHM_STHeals_AquaveilHP =
             new("WHM_STHeals_AquaveilHP", 90);
 
         /// <summary>
-        ///     Only use Aquaveil when weaving.
+        ///     Aquaveil weaving and boss options
         /// </summary>
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Aquaveil" />
-        internal static UserBool WHM_STHeals_AquaveilWeave =
-            new("WHM_STHeals_AquaveilWeave", false);
+        /// <seealso cref="Preset.WHM_STHeals_Aquaveil" />
+        public static UserBoolArray WHM_STHeals_AquaveilOptions =
+            new("WHM_STHeals_AquaveilOptions");
 
         /// <summary>
         ///     MP threshold to use Lucid Dreaming in single target healing.
@@ -623,19 +846,19 @@ internal partial class WHM
         ///     <b>Range</b>: 4000 - 9500 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Hundreds" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Lucid" />
-        internal static UserInt WHM_STHeals_Lucid =
+        /// <seealso cref="Preset.WHM_STHeals_Lucid" />
+        public static UserInt WHM_STHeals_Lucid =
             new("WHM_STHeals_Lucid", 6500);
 
         /// <summary>
-        ///     Only use Temperance when weaving.
-        /// </summary>
+        ///     Weaving and boss selection options for Temperance.
+        /// </summary> 
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Temperance" />
-        internal static UserBool WHM_STHeals_TemperanceWeave =
-            new("WHM_STHeals_TemperanceWeave", false);
+        /// <seealso cref="Preset.WHM_STHeals_Temperance" />
+        public static UserBoolArray WHM_STHeals_TemperanceOptions =
+            new("WHM_STHeals_TemperanceOptions");
 
         /// <summary>
         ///     HP threshold to use Temperance.
@@ -645,30 +868,53 @@ internal partial class WHM
         ///     <b>Range</b>: 1 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Temperance" />
-        internal static UserInt WHM_STHeals_TemperanceHP =
+        /// <seealso cref="Preset.WHM_STHeals_Temperance" />
+        public static UserInt WHM_STHeals_TemperanceHP =
             new("WHM_STHeals_TemperanceHP", 75);
 
         /// <summary>
-        ///     Content difficulty selector for ST Temperance.
+        ///     Weaving and boss selection options for Asylum.
         /// </summary>
         /// <value>
-        ///     <b>Default</b>: <see cref="ContentCheck.BottomHalfContent" /> <br />
-        ///     <b>Options</b>: <see cref="ContentCheck.BottomHalfContent" />
-        ///     and/or <see cref="ContentCheck.TopHalfContent" />
+        ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Temperance" />
-        internal static UserBoolArray WHM_STHeals_TemperanceDifficulty =
-            new("WHM_STHeals_TemperanceDifficulty", [true, false]);
+        /// <seealso cref="Preset.WHM_STHeals_Asylum" />
+        public static UserBoolArray WHM_STHeals_AsylumOptions =
+            new("WHM_STHeals_AsylumOptions");
 
         /// <summary>
-        ///     Content difficulty list set for ST Temperance, set by
-        ///     <see cref="WHM_STHeals_TemperanceDifficulty" />.
+        ///     HP threshold to use Asylum.
         /// </summary>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Temperance" />
-        internal static readonly ContentCheck.ListSet
-            WHM_STHeals_TemperanceDifficultyListSet =
-                ContentCheck.ListSet.Halved;
+        /// <value>
+        ///     <b>Default</b>: 75 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_STHeals_Asylum" />
+        public static UserInt WHM_STHeals_AsylumHP =
+            new("WHM_STHeals_AsylumHP", 75);
+        
+        /// <summary>
+        ///     Weaving and boss selection options for LiturgyOfTheBell.
+        /// </summary> 
+        /// <value>
+        ///     <b>Default</b>: false
+        /// </value>
+        /// <seealso cref="Preset.WHM_STHeals_LiturgyOfTheBell" />
+        public static UserBoolArray WHM_STHeals_LiturgyOfTheBellOptions =
+            new("WHM_STHeals_LiturgyOfTheBellOptions");
+
+        /// <summary>
+        ///     HP threshold to use LiturgyOfTheBell.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 75 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_STHeals_LiturgyOfTheBell" />
+        public static UserInt WHM_STHeals_LiturgyOfTheBellHP =
+            new("WHM_STHeals_LiturgyOfTheBellHP", 75);
 
         /// <summary>
         ///     HP threshold to stop using Esuna.
@@ -678,13 +924,19 @@ internal partial class WHM
         ///     <b>Range</b>: 0 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_STHeals_Esuna" />
-        internal static UserInt WHM_STHeals_Esuna =
+        /// <seealso cref="Preset.WHM_STHeals_Esuna" />
+        public static UserInt WHM_STHeals_Esuna =
             new("WHM_Cure2_Esuna", 40);
 
         #endregion
 
         #region AoE Heals
+        
+        /// <summary>
+        ///     Priority order for AoE healing abilities.
+        /// </summary>
+        public static UserIntArray WHM_AoE_Heals_Priority =
+            new("WHM_AoE_Heals_Priority",[9,8,6,5,3,4,7,2,1]);
 
         /// <summary>
         ///     Number of Thin Air charges to reserve in AoE healing.
@@ -694,9 +946,35 @@ internal partial class WHM
         ///     <b>Range</b>: 0 - 1 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_ThinAir" />
-        internal static UserInt WHM_AoEHeals_ThinAir =
+        /// <seealso cref="Preset.WHM_AoEHeals_ThinAir" />
+        public static UserInt WHM_AoEHeals_ThinAir =
             new("WHM_AoE_ThinAir");
+        
+        /// <summary>
+        ///     Average party HP% threshold to use Cure3.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 100 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_Cure3" />
+        
+        public static UserInt WHM_AoEHeals_Cure3HP = 
+            new("WHM_AoEHeals_Cure3HP", 100);
+        
+        /// <summary>
+        ///     Minimum Party Members In range of target to use Cure 3.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 2 <br />
+        ///     <b>Range</b>: 2 - 8 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_Cure3" />
+        
+        public static UserInt WHM_AoEHeals_Cure3Allies = 
+            new("WHM_AoEHeals_Cure3Allies", 2);
 
         /// <summary>
         ///     MP threshold to use Cure III.
@@ -706,19 +984,44 @@ internal partial class WHM
         ///     <b>Range</b>: 1500 - 8500 <br />
         ///     <b>Step</b>: 500
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Cure3" />
-        internal static UserInt WHM_AoEHeals_Cure3MP =
+        /// <seealso cref="Preset.WHM_AoEHeals_Cure3" />
+        public static UserInt WHM_AoEHeals_Cure3MP =
             new("WHM_AoE_Cure3MP");
 
+        /// <summary>
+        ///     Average party HP% threshold to use Assize.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 100 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_Assize" />
+        public static UserInt WHM_AoEHeals_AssizeHP = 
+            new("WHM_AoEHeals_AssizeHP", 100);
+        
         /// <summary>
         ///     Only use Assize when weaving.
         /// </summary>
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Assize" />
-        internal static UserBool WHM_AoEHeals_AssizeWeave =
+        /// <seealso cref="Preset.WHM_AoEHeals_Assize" />
+        public static UserBool WHM_AoEHeals_AssizeWeave =
             new("WHM_AoEHeals_AssizeWeave");
+        
+        /// <summary>
+        ///     Average party HP% threshold to use Plenary.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 100 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_Plenary" />
+        
+        public static UserInt WHM_AoEHeals_PlenaryHP = 
+            new("WHM_AoEHeals_PlenaryHP", 100);
 
         /// <summary>
         ///     Only use Plenary Indulgence when weaving.
@@ -726,8 +1029,8 @@ internal partial class WHM
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Plenary" />
-        internal static UserBool WHM_AoEHeals_PlenaryWeave =
+        /// <seealso cref="Preset.WHM_AoEHeals_Plenary" />
+        public static UserBool WHM_AoEHeals_PlenaryWeave =
             new("WHM_AoEHeals_PlenaryWeave");
 
         /// <summary>
@@ -736,19 +1039,9 @@ internal partial class WHM
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Temperance" />
-        internal static UserBool WHM_AoEHeals_TemperanceWeave =
+        /// <seealso cref="Preset.WHM_AoEHeals_Temperance" />
+        public static UserBool WHM_AoEHeals_TemperanceWeave =
             new("WHM_AoEHeals_TemperanceWeave");
-
-        /// <summary>
-        ///     Will also use Temperance for Raidwides, if the party is low enough.
-        /// </summary>
-        /// <value>
-        ///     <b>Default</b>: false
-        /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Temperance" />
-        internal static UserBool WHM_AoEHeals_TemperanceRaidwide =
-            new("WHM_AoEHeals_TemperanceRaidwide");
 
         /// <summary>
         ///     MP threshold to use Lucid Dreaming in AoE healing.
@@ -758,8 +1051,8 @@ internal partial class WHM
         ///     <b>Range</b>: 4000 - 9500 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Hundreds" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Lucid" />
-        internal static UserInt WHM_AoEHeals_Lucid =
+        /// <seealso cref="Preset.WHM_AoEHeals_Lucid" />
+        public static UserInt WHM_AoEHeals_Lucid =
             new("WHM_AoEHeals_Lucid", 6500);
 
         /// <summary>
@@ -770,34 +1063,80 @@ internal partial class WHM
         ///     <b>Range</b>: 0 - 6 <br />
         ///     <b>Step</b>: 0.1
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Medica2" />
-        internal static UserFloat WHM_AoEHeals_MedicaTime =
+        /// <seealso cref="Preset.WHM_AoEHeals_Medica2" />
+        public static UserFloat WHM_AoEHeals_MedicaTime =
             new("WHM_AoEHeals_MedicaTime");
-
+        
         /// <summary>
-        ///     Only use Liturgy of the Bell vs a Raidwide.
+        ///     Average party HP% threshold to use Medica2.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 100 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_Medica2" />
+        
+        public static UserInt WHM_AoEHeals_Medica2HP = 
+            new("WHM_AoEHeals_Medica2HP", 100);
+        
+        /// <summary>
+        ///     Average party HP% threshold to use Rapture.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 100 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_Rapture" />
+        
+        public static UserInt WHM_AoEHeals_RaptureHP = 
+            new("WHM_AoEHeals_RaptureHP", 100);
+        
+        /// <summary>
+        ///     Average party HP% threshold to use Divine Caress.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: 100 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_DivineCaress" />
+        
+        public static UserInt WHM_AoEHeals_DivineCaressHP = 
+            new("WHM_AoEHeals_DivineCaressHP", 100);
+        
+        /// <summary>
+        ///     Only use Divine Caress when weaving.
         /// </summary>
         /// <value>
         ///     <b>Default</b>: false
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_LiturgyOfTheBell" />
-        internal static UserBool WHM_AoEHeals_LiturgyRaidwideOnly =
-            new("WHM_AoEHeals_LiturgyRaidwideOnly");
-
+        /// <seealso cref="Preset.WHM_AoEHeals_DivineCaress" />
+        public static UserBool WHM_AoEHeals_DivineCaressWeave =
+            new("WHM_AoEHeals_DivineCaressWeave");
+        
         /// <summary>
-        ///     Boss Requirement for Liturgy of the Bell, to only check for raidwides
-        ///     in boss fights, or not.<br />
-        ///     Raidwides check controlled by
-        ///     <see cref="WHM_AoEHeals_LiturgyRaidwideOnly" />.
+        ///     Average party HP% threshold to use LiturgyOfTheBell.
         /// </summary>
         /// <value>
-        ///     <b>Default</b>: <see cref="BossRequirement.On" /> <br />
-        ///     <b>Options</b>: <see cref="BossRequirement">BossRequirement Enum</see>
+        ///     <b>Default</b>: 30 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_LiturgyOfTheBell" />
-        public static readonly UserInt
-            WHM_AoEHeals_LiturgyRaidwideOnlyBoss =
-                new("WHM_AoEHeals_LiturgyRaidwideOnlyBoss", (int) BossRequirement.On);
+        /// <seealso cref="Preset.WHM_AoEHeals_LiturgyOfTheBell" />
+        public static UserInt WHM_AoEHeals_LiturgyHP =
+            new("WHM_AoEHeals_LiturgyHP", 30);
+        
+        /// <summary>
+        ///     Only use Liturgy when weaving.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: false
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_LiturgyOfTheBell" />
+        public static UserBool WHM_AoEHeals_LiturgyWeave =
+            new("WHM_AoEHeals_LiturgyWeave");
 
         /// <summary>
         ///     Content difficulty selector for Liturgy of the Bell.
@@ -807,16 +1146,16 @@ internal partial class WHM
         ///     <b>Options</b>: <see cref="ContentCheck.BottomHalfContent" />
         ///     and/or <see cref="ContentCheck.TopHalfContent" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_LiturgyOfTheBell" />
-        internal static UserBoolArray WHM_AoEHeals_LiturgyDifficulty =
+        /// <seealso cref="Preset.WHM_AoEHeals_LiturgyOfTheBell" />
+        public static UserBoolArray WHM_AoEHeals_LiturgyDifficulty =
             new("WHM_AoEHeals_LiturgyDifficulty", [true, false]);
 
         /// <summary>
         ///     Content difficulty list set for Liturgy of the Bell, set by
         ///     <see cref="WHM_AoEHeals_LiturgyDifficulty" />.
         /// </summary>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_LiturgyOfTheBell" />
-        internal static readonly ContentCheck.ListSet
+        /// <seealso cref="Preset.WHM_AoEHeals_LiturgyOfTheBell" />
+        public static readonly ContentCheck.ListSet
             WHM_AoEHeals_LiturgyDifficultyListSet =
                 ContentCheck.ListSet.Halved;
 
@@ -828,8 +1167,8 @@ internal partial class WHM
         ///     <b>Range</b>: 1 - 100 <br />
         ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Temperance" />
-        internal static UserInt WHM_AoEHeals_TemperanceHP =
+        /// <seealso cref="Preset.WHM_AoEHeals_Temperance" />
+        public static UserInt WHM_AoEHeals_TemperanceHP =
             new("WHM_AoEHeals_TemperanceHP", 30);
 
         /// <summary>
@@ -841,60 +1180,110 @@ internal partial class WHM
         ///     <b>Options</b>: <see cref="ContentCheck.BottomHalfContent" />
         ///     and/or <see cref="ContentCheck.TopHalfContent" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Temperance" />
-        internal static UserBoolArray WHM_AoEHeals_TemperanceDifficulty =
+        /// <seealso cref="Preset.WHM_AoEHeals_Temperance" />
+        public static UserBoolArray WHM_AoEHeals_TemperanceDifficulty =
             new("WHM_AoEHeals_TemperanceDifficulty", [true, true]);
 
         /// <summary>
         ///     Content difficulty list set for Temperance, set by
         ///     <see cref="WHM_AoEHeals_TemperanceDifficulty" />.
         /// </summary>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Temperance" />
-        internal static readonly ContentCheck.ListSet
+        /// <seealso cref="Preset.WHM_AoEHeals_Temperance" />
+        public static readonly ContentCheck.ListSet
             WHM_AoEHeals_TemperanceDifficultyListSet =
                 ContentCheck.ListSet.Halved;
-
+        
         /// <summary>
-        ///     Content difficulty selector for Temperance raidwide option.
+        ///     Average party HP% threshold to use Asylum.
         /// </summary>
         /// <value>
-        ///     <b>Default</b>: <see cref="ContentCheck.BottomHalfContent" /><br />
+        ///     <b>Default</b>: 30 <br />
+        ///     <b>Range</b>: 1 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_Asylum" />
+        public static UserInt WHM_AoEHeals_AsylumHP =
+            new("WHM_AoEHeals_AsylumHP", 30);
+        
+        /// <summary>
+        ///     Only use Asylum when weaving.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: false
+        /// </value>
+        /// <seealso cref="Preset.WHM_AoEHeals_Asylum" />
+        public static UserBool WHM_AoEHeals_AsylumWeave =
+            new("WHM_AoEHeals_AsylumWeave");
+
+        /// <summary>
+        ///     Content difficulty selector for Asylum.
+        /// </summary>
+        /// <value>
+        ///     <b>Default</b>: <see cref="ContentCheck.BottomHalfContent" />
+        ///     and <see cref="ContentCheck.TopHalfContent" /><br />
         ///     <b>Options</b>: <see cref="ContentCheck.BottomHalfContent" />
         ///     and/or <see cref="ContentCheck.TopHalfContent" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Temperance" />
-        internal static UserBoolArray WHM_AoEHeals_TemperanceRaidwideDifficulty =
-            new("WHM_AoEHeals_TemperanceRaidwideDifficulty", [true, false]);
+        /// <seealso cref="Preset.WHM_AoEHeals_Asylum" />
+        public static UserBoolArray WHM_AoEHeals_AsylumDifficulty =
+            new("WHM_AoEHeals_AsylumDifficulty", [true, true]);
 
         /// <summary>
-        ///     Content difficulty list set for Temperance raidwide option, set by
-        ///     <see cref="WHM_AoEHeals_TemperanceRaidwideDifficulty" />.
+        ///     Content difficulty list set for Asylum, set by
+        ///     <see cref="WHM_AoEHeals_AsylumDifficulty" />.
         /// </summary>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Temperance" />
-        internal static readonly ContentCheck.ListSet
-            WHM_AoEHeals_TemperanceRaidwideDifficultyListSet =
+        /// <seealso cref="Preset.WHM_AoEHeals_Asylum" />
+        public static readonly ContentCheck.ListSet
+            WHM_AoEHeals_AsylumDifficultyListSet =
                 ContentCheck.ListSet.Halved;
 
-        /// <summary>
-        ///     Prioritizes Temperance for raidwides, by ignoring the HP% check then.
-        /// </summary>
-        /// <value>
-        ///     <b>Default</b>: false
-        /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Temperance" />
-        internal static UserBool WHM_AoEHeals_TemperanceRaidwidePrioritization =
-            new("WHM_AoEHeals_TemperanceRaidwidePrioritization");
+        #endregion
+        
+        #region Standalone Features
 
         /// <summary>
-        ///     Only use Asylum vs a Raidwide.
+        ///     Hard target Retargeting Options for Asylum Standalone Feature
+        /// </summary> 
+        /// <value>
+        ///     <b>Default</b>: True True
+        /// </value>
+        /// <seealso cref="Preset.WHM_Re_Asylum" />
+        public static UserBoolArray WHM_AsylumOptions = 
+            new("WHM_AsylumOptions", [true, true]);
+        
+        /// <summary>
+        ///     Hard target Retargeting Options for Liturgy Of The Bell
+        ///     Standalone Feature
+        /// </summary> 
+        /// <value>
+        ///     <b>Default</b>: True True
+        /// </value>
+        /// <seealso cref="Preset.WHM_Re_LiturgyOfTheBell" />
+        public static UserBoolArray WHM_LiturgyOfTheBellOptions = 
+            new ("WHM_LiturgyOfTheBellOptions", [true, true]);
+        
+        /// <summary>
+        ///     Options for Aquaveil Standalone Feature
+        /// </summary> 
+        /// <value>
+        ///     <b>Default</b>: True True
+        /// </value>
+        /// <seealso cref="Preset.WHM_Mit_ST" />
+        public static UserBoolArray WHM_AquaveilOptions = 
+            new ("WHM_AquaveilOptions", [true, true]);
+        
+        /// <summary>
+        ///     Tetra threshold for Aquaveil standalone feature
         /// </summary>
         /// <value>
-        ///     <b>Default</b>: false
+        ///     <b>Default</b>: 100 <br />
+        ///     <b>Range</b>: 0 - 100 <br />
+        ///     <b>Step</b>: <see cref="SliderIncrements.Ones" />
         /// </value>
-        /// <seealso cref="CustomComboPreset.WHM_AoEHeals_Asylum" />
-        internal static UserBool WHM_AoEHeals_AsylumRaidwideOnly =
-            new("WHM_AoEHeals_AsylumRaidwideOnly");
-
+        /// <seealso cref="Preset.WHM_Mit_ST" />
+        public static UserInt WHM_Aquaveil_TetraThreshold 
+            = new("WHM_Aquaveil_TetraThreshold", 100);
+        
         #endregion
 
         #endregion

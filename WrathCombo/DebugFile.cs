@@ -1,6 +1,8 @@
 #region
 
+using Dalamud.Game.ClientState.Objects.Types;
 using ECommons.DalamudServices;
+using ECommons.GameFunctions;
 using ECommons.GameHelpers;
 using ECommons.Logging;
 using Lumina.Excel.Sheets;
@@ -11,14 +13,13 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using Dalamud.Game.ClientState.Objects.Types;
-using ECommons.GameFunctions;
 using WrathCombo.AutoRotation;
 using WrathCombo.Combos.PvE;
 using WrathCombo.Combos.PvP;
 using WrathCombo.Core;
 using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Data;
+using WrathCombo.Data.Conflicts;
 using WrathCombo.Extensions;
 using WrathCombo.Services;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
@@ -163,16 +164,20 @@ public static class DebugFile
 
     private static void AddConflictingInfo()
     {
-        var conflictingPlugins = ConflictingPluginsCheck.TryGetConflictingPlugins();
-        var conflictingPluginsCount = conflictingPlugins?.Length ?? 0;
+        var hasConflicts = ConflictingPlugins.TryGetConflicts(out var conflictsObj);
+        var conflicts = conflictsObj.ToArray();
+        var conflictingPluginsCount = conflicts.Length;
 
         AddLine($"Conflicting Plugins: {conflictingPluginsCount}");
 
-        if (conflictingPlugins == null) return;
+        if (!hasConflicts) return;
 
         AddLine("START CONFLICTING PLUGINS");
-        foreach (var plugin in conflictingPlugins)
-            AddLine($"- {plugin}");
+        foreach (var plugin in conflicts)
+            AddLine($"- {plugin.Name} v{plugin.Version} ({plugin.ConflictType}) " +
+                    (string.IsNullOrEmpty(plugin.Reason)
+                        ? ""
+                        : "reason: " + plugin.Reason));
         AddLine("END CONFLICTING PLUGINS");
     }
 
@@ -216,23 +221,50 @@ public static class DebugFile
 
         if (target is null) return;
 
+        bool? failedSheetFind = null;
         IBattleChara? battleTarget = null;
+        BNpcBase? battleNPCRow = null;
         if (target is IBattleChara)
+        {
             battleTarget = target as IBattleChara;
+            if (ActionWatching.BNPCSheet.TryGetValue(battleTarget.BaseId,
+                    out var sheetRow))
+            {
+                battleNPCRow = sheetRow;
+                failedSheetFind = false;
+            }
+            else
+                failedSheetFind = true;
+        }
 
         AddLine("START TARGET INFO");
-        AddLine($"Targetable: {target.IsTargetable}");
-        AddLine($"Hostile: {target.IsHostile()}");
-        AddLine($"Dead: {target.IsDead}");
+        AddLine($"Is Hostile: {target.IsHostile()}");
+        AddLine($"In Combat: {target.IsInCombat()}");
+        AddLine($"Is Boss: {battleTarget.IsBoss()}");
+        AddLine($"(In Boss Encounter: {InBossEncounter()})");
+        AddLine($"Is Dead: {target.IsDead}");
         AddLine($"Distance: {GetTargetDistance(target):F1}y");
+        AddLine($"Nameplate: {target.GetNameplateKind()}");
         if (battleTarget is not null)
         {
+            AddLine($"IDs: entity:{battleTarget.EntityId}, " +
+                    $"base/data:{battleTarget.BaseId}");
             AddLine($"Level: {battleTarget.Level}");
             AddLine($"Is Casting: {battleTarget.IsCasting}");
             AddLine($"Is Cast Interruptable: {battleTarget.IsCastInterruptible}");
             AddLine();
             AddLine($"HP: {(battleTarget.CurrentHp / battleTarget.MaxHp * 100):F0}%");
             AddLine($"+Shield: {battleTarget.ShieldPercentage:F0}%");
+
+            if (battleNPCRow is not null)
+            {
+                AddLine();
+                AddLine($"Rank: {battleNPCRow.Value.Rank}");
+            }
+            if (failedSheetFind is not null)
+            {
+                AddLine($"Found Sheet: {(failedSheetFind is true ? "no" : "yes")}");
+            }
         }
         AddLine("END TARGET INFO");
 

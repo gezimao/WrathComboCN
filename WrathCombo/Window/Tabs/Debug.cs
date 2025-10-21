@@ -1,11 +1,7 @@
 ﻿#region Directives
 
-using System;
-using System.Linq;
-using System.Numerics;
-using System.Text;
-using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
+using Dalamud.Interface;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility.Raii;
@@ -19,9 +15,12 @@ using ECommons.Logging;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using ImGuiNET;
 using Lumina.Excel.Sheets;
 using Newtonsoft.Json;
+using System;
+using System.Linq;
+using System.Numerics;
+using System.Text;
 using WrathCombo.AutoRotation;
 using WrathCombo.Core;
 using WrathCombo.CustomComboNS;
@@ -32,9 +31,9 @@ using WrathCombo.Services.IPC_Subscriber;
 using WrathCombo.Services.IPC;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 using Action = Lumina.Excel.Sheets.Action;
+using BattleNPCSubKind = Dalamud.Game.ClientState.Objects.Enums.BattleNpcSubKind;
 using ObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
 using Status = Dalamud.Game.ClientState.Statuses.Status;
-using Dalamud.Interface;
 
 #endregion
 
@@ -134,7 +133,7 @@ internal class Debug : ConfigWindow, IDisposable
         // Custom 2-Column Styling
         static void CustomStyleText(string firstColumn, object? secondColumn, bool useMonofont = false, Vector4? optionalColor = null)
         {
-            ImGui.Columns(2, null, false);
+            ImGui.Columns(2, border: false);
             if (!string.IsNullOrEmpty(firstColumn))
             {
                 ImGui.TextUnformatted(firstColumn);
@@ -363,18 +362,37 @@ internal class Debug : ConfigWindow, IDisposable
 
         if (ImGui.CollapsingHeader("Target Data"))
         {
-            if (target is not null) { 
-            CustomStyleText("Name:", target?.Name);
-            CustomStyleText("Health:", $"{EnemyHealthCurrentHp():N0} / {GetTargetMaxHP():N0} ({MathF.Round(GetTargetHPPercent(), 2)}%)");
-            CustomStyleText("Distance:", $"{MathF.Round(GetTargetDistance(), 2)}y");
-            CustomStyleText("Hitbox Radius:", target?.HitboxRadius);
-            CustomStyleText("In Melee Range:", InMeleeRange());
-            CustomStyleText("Height Difference:", $"{MathF.Round(GetTargetHeightDifference(), 2)}y");
-            CustomStyleText("Relative Position:", AngleToTarget().ToString());
-            CustomStyleText("Requires Positionals:", TargetNeedsPositionals());
-            CustomStyleText("Is Invincible:", TargetIsInvincible(target!));
+            if (target is not null)
+            {
+                bool? foundSheet = null;
+                BNpcBase? battleNPCRow = null;
+                if (ActionWatching.BNPCSheet.TryGetValue(target.BaseId,
+                        out var sheetRow))
+                {
+                    battleNPCRow = sheetRow;
+                    foundSheet = true;
+                }
+                else
+                    foundSheet = false;
+                
+                CustomStyleText("Name:", target?.Name);
+                CustomStyleText("IDs: (<entity>/<data or base>)", $"{target?.EntityId} / {target?.BaseId}");
+                CustomStyleText("Nameplate:", target?.GetNameplateKind().ToString());
+                CustomStyleText("Rank:", $"{battleNPCRow?.Rank.ToString() ?? "null"} (found sheet: {(foundSheet is true ? "yes" : "no")})");
+                CustomStyleText("Health:", $"{GetTargetCurrentHP():N0} / {GetTargetMaxHP():N0} ({MathF.Round(GetTargetHPPercent(), 2)}%)");
+                CustomStyleText("Distance:", $"{MathF.Round(GetTargetDistance(), 2)}y");
+                CustomStyleText("Hitbox Radius:", target?.HitboxRadius);
+                CustomStyleText("In Melee Range:", InMeleeRange());
+                CustomStyleText("Height Difference:", $"{MathF.Round(GetTargetHeightDifference(), 2)}y");
+                CustomStyleText("Relative Position:", AngleToTarget().ToString());
+                CustomStyleText("Requires Positionals:", TargetNeedsPositionals());
+                CustomStyleText("Is Invincible:", TargetIsInvincible(target!));
+                CustomStyleText("Is Hostile:", target?.IsHostile());
+                CustomStyleText("Is Friendly:", target?.IsFriendly());
+                CustomStyleText("Is Boss:", target?.IsBoss());
+                CustomStyleText("In Boss Encounter:", InBossEncounter());
 
-            ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
 
             if (ImGui.TreeNode("Cast Data"))
             {
@@ -382,9 +400,9 @@ internal class Debug : ConfigWindow, IDisposable
                 {
                     CustomStyleText("Cast Action:", castChara.CastActionId == 0
                         ? string.Empty
-                        : $"{(string.IsNullOrEmpty(ActionWatching.GetActionName(castChara.CastActionId))
+                        : $"{(string.IsNullOrEmpty(GetActionName(castChara.CastActionId))
                             ? "Unknown"
-                            : ActionWatching.GetActionName(castChara.CastActionId))} (ID: {castChara.CastActionId})");
+                            : GetActionName(castChara.CastActionId))} (ID: {castChara.CastActionId})");
                     CustomStyleText("Cast Time:", $"{castChara.CurrentCastTime:F2} / {castChara.TotalCastTime:F2}");
 
                     // Extract Lumina Data
@@ -395,7 +413,7 @@ internal class Debug : ConfigWindow, IDisposable
                     CustomStyleText("Cast 100ms:", $"{charaSpell?.Cast100ms * 0.1f ?? 0f:F2} + {charaSpell?.ExtraCastTime100ms * 0.1f ?? 0f:F2}");
                     CustomStyleText("Cast Type:", $"{charaSpell?.CastType ?? 0}");
                     CustomStyleText("Action Type:", $"{castChara.CastActionType}");
-                    CustomStyleText("Action Range:", $"{ActionWatching.GetActionRange(charaSpell?.RowId ?? 0)}y");
+                    CustomStyleText("Action Range:", $"{GetActionRange(charaSpell?.RowId ?? 0)}y");
                     CustomStyleText("Effect Range:", $"{charaSpell?.EffectRange ?? 0}y");
                     CustomStyleText("Interruptible:", $"{castChara.IsCastInterruptible}");
                 }
@@ -407,7 +425,7 @@ internal class Debug : ConfigWindow, IDisposable
 
             if (ImGui.TreeNode("Object Data"))
             {
-                CustomStyleText("DataId:", target?.DataId);
+                CustomStyleText("DataId:", target?.BaseId);
 
                 // Display 'EntityId' only if it differs from 'GameObjectId'
                 if (target is not null && target.EntityId != target.GameObjectId)
@@ -462,7 +480,7 @@ internal class Debug : ConfigWindow, IDisposable
                     .Where(x => x.ObjectKind == ObjectKind.BattleNpc &&
                                 x.IsTargetable &&
                                 !x.IsDead &&
-                                x.BattleNpcKind is BattleNpcSubKind.Enemy or BattleNpcSubKind.BattleNpcPart);
+                                x.BattleNpcKind is BattleNPCSubKind.Enemy or BattleNPCSubKind.BattleNpcPart);
 
                     foreach (var enemy in enemies)
                     {
@@ -508,6 +526,8 @@ internal class Debug : ConfigWindow, IDisposable
                     CustomStyleText("MP:", $"{member.CurrentMP:N0} / {member.BattleChara.MaxMp:N0}");
                     CustomStyleText("Job:", $"{member.RealJob?.NameEnglish} (ID: {member.RealJob?.RowId})");
                     CustomStyleText("Dead Timer:", TimeSpentDead(member.BattleChara.GameObjectId));
+                    CustomStyleText("Role:", $"{member?.GetRole()}");
+                    CustomStyleText("Out of Party NPC:", member.IsOutOfPartyNPC);
 
                     if (ImGui.TreeNode("Data Dump"))
                     {
@@ -569,28 +589,28 @@ internal class Debug : ConfigWindow, IDisposable
             CustomStyleText("Last Action:",
                 ActionWatching.LastAction == 0
                     ? string.Empty
-                    : $"{(string.IsNullOrEmpty(ActionWatching.GetActionName(ActionWatching.LastAction))
+                    : $"{(string.IsNullOrEmpty(GetActionName(ActionWatching.LastAction))
                         ? "Unknown"
-                        : ActionWatching.GetActionName(ActionWatching.LastAction))} (ID: {ActionWatching.LastAction})");
+                        : GetActionName(ActionWatching.LastAction))} (ID: {ActionWatching.LastAction})");
             CustomStyleText("Last Action Cost:", GetResourceCost(ActionWatching.LastAction));
             CustomStyleText("Last Action Type:", ActionWatching.GetAttackType(ActionWatching.LastAction));
-            CustomStyleText("Last Weaponskill:", ActionWatching.GetActionName(ActionWatching.LastWeaponskill));
-            CustomStyleText("Last Spell:", ActionWatching.GetActionName(ActionWatching.LastSpell));
-            CustomStyleText("Last Ability:", ActionWatching.GetActionName(ActionWatching.LastAbility));
+            CustomStyleText("Last Weaponskill:", GetActionName(ActionWatching.LastWeaponskill));
+            CustomStyleText("Last Spell:", GetActionName(ActionWatching.LastSpell));
+            CustomStyleText("Last Ability:", GetActionName(ActionWatching.LastAbility));
             CustomStyleText("Combo Timer:", $"{ComboTimer:F1}");
             CustomStyleText("Combo Action:",
                 ComboAction == 0
                     ? string.Empty
-                    : $"{(string.IsNullOrEmpty(ActionWatching.GetActionName(ComboAction))
+                    : $"{(string.IsNullOrEmpty(GetActionName(ComboAction))
                         ? "Unknown"
-                        : ActionWatching.GetActionName(ComboAction))} (ID: {ComboAction})");
+                        : GetActionName(ComboAction))} (ID: {ComboAction})");
             CustomStyleText("Cast Time:", $"{player.CurrentCastTime:F2} / {player.TotalCastTime:F2}");
             CustomStyleText("Cast Action:",
                 player.CastActionId == 0
                     ? string.Empty
-                    : $"{(string.IsNullOrEmpty(ActionWatching.GetActionName(player.CastActionId))
+                    : $"{(string.IsNullOrEmpty(GetActionName(player.CastActionId))
                         ? "Unknown"
-                        : ActionWatching.GetActionName(player.CastActionId))} (ID: {player.CastActionId})");
+                        : GetActionName(player.CastActionId))} (ID: {player.CastActionId})");
             CustomStyleText("GCD Total:", GCDTotal);
             CustomStyleText("Queued Action:", ActionManager.Instance()->QueuedActionId.ActionName());
             CustomStyleText("Animation Lock:", $"{ActionManager.Instance()->AnimationLock:F1}");
@@ -617,7 +637,7 @@ internal class Debug : ConfigWindow, IDisposable
                     {
                         CustomStyleText("Next Action:", WrathOpener.CurrentOpener.OpenerActions[WrathOpener.CurrentOpener.OpenerStep].ActionName());
                         CustomStyleText("Is Delayed Weave:", WrathOpener.CurrentOpener.DelayedWeaveSteps.Any(x => x == WrathOpener.CurrentOpener.OpenerStep));
-                        CustomStyleText("Can Delayed Weave:", CanDelayedWeave(end: 0.1));
+                        CustomStyleText("Can Delayed Weave:", CanDelayedWeave(weaveEnd: 0.1f));
                     }
                 }
 
@@ -777,7 +797,7 @@ internal class Debug : ConfigWindow, IDisposable
             if (_debugSpell != null)
             {
                 var actionStatus = ActionManager.Instance()->GetActionStatus(ActionType.Action, _debugSpell.Value.RowId);
-                var icon = Svc.Texture.GetFromGameIcon(new(_debugSpell.Value.Icon)).GetWrapOrEmpty().ImGuiHandle;
+                var icon = Svc.Texture.GetFromGameIcon(new(_debugSpell.Value.Icon)).GetWrapOrEmpty().Handle;
 
                 ImGui.Image(icon, new Vector2(60).Scale());
                 ImGui.SameLine();
@@ -792,12 +812,12 @@ internal class Debug : ConfigWindow, IDisposable
 
                 CustomStyleText("Base Recast:", $"{_debugSpell.Value.Recast100ms / 10f}s");
                 CustomStyleText("Original Hook:", OriginalHook(_debugSpell.Value.RowId).ActionName());
-                CustomStyleText("Cooldown Total:", $"{ActionManager.Instance()->GetRecastTime(ActionType.Action, _debugSpell.Value.RowId)}");
+                CustomStyleText("Cooldown Total:", $"{GetCooldown(_debugSpell.Value.RowId).CooldownTotal}");
                 CustomStyleText("Current Cooldown:", GetCooldown(_debugSpell.Value.RowId).CooldownRemaining);
                 CustomStyleText("Current Cast Time:", ActionManager.GetAdjustedCastTime(ActionType.Action, _debugSpell.Value.RowId));
                 CustomStyleText("Max Charges:", $"{_debugSpell.Value.MaxCharges}");
                 CustomStyleText("Charges (Level):", $"{GetCooldown(_debugSpell.Value.RowId).MaxCharges}");
-                CustomStyleText("Range:", $"{ActionWatching.GetActionRange(_debugSpell.Value.RowId)}");
+                CustomStyleText("Range:", $"{GetActionRange(_debugSpell.Value.RowId)}");
                 CustomStyleText("Effect Range:", $"{_debugSpell.Value.EffectRange}");
                 CustomStyleText("Can Target Hostile:", $"{_debugSpell.Value.CanTargetHostile}");
                 CustomStyleText("Can Target Self:", $"{_debugSpell.Value.CanTargetSelf}");
@@ -918,7 +938,7 @@ internal class Debug : ConfigWindow, IDisposable
         {
             if (ImGui.TreeNode("Active Spells"))
             {
-                ImGui.TextUnformatted($"{string.Join("\n", Service.Configuration.ActiveBLUSpells.Select(ActionWatching.GetActionName).OrderBy(x => x))}");
+                ImGui.TextUnformatted($"{string.Join("\n", Service.Configuration.ActiveBLUSpells.Select(GetActionName).OrderBy(x => x))}");
                 ImGui.TreePop();
             }
 
@@ -1041,7 +1061,7 @@ internal class Debug : ConfigWindow, IDisposable
                     ImGui.NewLine();
                     ImGuiEx.Spacing(new Vector2(10, 0));
                     ImGui.SameLine();
-                    if (ImGui.Button("Release"))
+                    if (ImGui.Button("Release##releaseFromList" + registration.Key))
                     {
                         P.IPC.ReleaseControl(registration.Key);
                     }

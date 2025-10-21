@@ -1,17 +1,18 @@
 ﻿#region
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
 using Dalamud.Networking.Http;
 using ECommons;
 using ECommons.ExcelServices;
 using ECommons.EzIpcManager;
 using ECommons.GameHelpers;
 using ECommons.Logging;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using WrathCombo.Attributes;
 using WrathCombo.Combos;
 using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Extensions;
@@ -75,21 +76,22 @@ public partial class Helper(ref Leasing leasing)
     /// </summary>
     /// <param name="preset">The preset to search for the opposite of.</param>
     /// <returns>The Opposite-mode preset.</returns>
-    internal static CustomComboPreset? GetOppositeModeCombo(CustomComboPreset preset)
+    internal static Preset? GetOppositeModeCombo(Preset preset)
     {
         const StringComparison lower = StringComparison.CurrentCultureIgnoreCase;
         var attr = preset.Attributes();
 
-        // Bail if it is a heal preset
-        if (attr.CustomComboInfo.Name.Contains("heal", lower))
+        // Bail if it is not one of the main combos
+        if (attr.ComboType is not (ComboType.Advanced or ComboType.Simple))
             return null;
 
         // Detect the target type
-        var targetType = attr.CustomComboInfo.Name.Contains("single target", lower) ?
-            ComboTargetTypeKeys.SingleTarget :
-            (attr.CustomComboInfo.Name.Contains("- aoe", lower) ||
-             attr.CustomComboInfo.Name.Contains("aoe dps", lower)) ?
-                ComboTargetTypeKeys.MultiTarget : ComboTargetTypeKeys.Other;
+        var targetType =
+            attr.CustomComboInfo.Name.Contains("single target", lower)
+                ? ComboTargetTypeKeys.SingleTarget
+                : (attr.CustomComboInfo.Name.Contains("- aoe", lower))
+                    ? ComboTargetTypeKeys.MultiTarget
+                    : ComboTargetTypeKeys.Other;
 
         // Bail if it is not a Single-Target or Multi-Target primary preset
         if (targetType == ComboTargetTypeKeys.Other)
@@ -97,7 +99,7 @@ public partial class Helper(ref Leasing leasing)
 
         // Detect the simplicity level
         var simplicityLevel =
-            attr.CustomComboInfo.Name.Contains("simple mode", lower)
+            attr.ComboType is ComboType.Simple
                 ? ComboSimplicityLevelKeys.Simple
                 : ComboSimplicityLevelKeys.Advanced;
         // Flip the simplicity level
@@ -111,13 +113,13 @@ public partial class Helper(ref Leasing leasing)
             // Get the opposite mode
             var categorizedPreset =
                 P.IPCSearch.CurrentJobComboStatesCategorized
-                        [(Job)attr.CustomComboInfo.JobID]
+                        [attr.CustomComboInfo.Job]
                     [targetType][simplicityLevelToSearchFor];
 
             // Return the opposite mode, as a proper preset
             var oppositeMode = categorizedPreset.FirstOrDefault().Key;
-            var oppositeModePreset = (CustomComboPreset)
-                Enum.Parse(typeof(CustomComboPreset), oppositeMode, true);
+            var oppositeModePreset = (Preset)
+                Enum.Parse(typeof(Preset), oppositeMode, true);
             return oppositeModePreset;
         }
         catch (Exception ex)
@@ -163,7 +165,7 @@ public partial class Helper(ref Leasing leasing)
             return null;
 
         // Convert current job/class to a job, if it is a class
-        var job = (Job)CustomComboFunctions.JobIDs.ClassToJob((uint)Player.Job);
+        var job = Player.Job.GetUpgradedJob();
 
         // Get the user's settings for this job
         P.IPCSearch.CurrentJobComboStatesCategorized.TryGetValue(job,
@@ -181,17 +183,17 @@ public partial class Helper(ref Leasing leasing)
 
         #region Override the Values with any IPC-control
 
-        CustomComboPreset? simpleComboPreset = simpleHigher is null
+        Preset? simpleComboPreset = simpleHigher is null
             ? null
-            : (CustomComboPreset)
-            Enum.Parse(typeof(CustomComboPreset), simpleHigher.Value.Key, true);
+            : (Preset)
+            Enum.Parse(typeof(Preset), simpleHigher.Value.Key, true);
         if (simpleComboPreset is not null)
         {
             simple[ComboStateKeys.AutoMode] =
-                P.IPCSearch.AutoActions[(CustomComboPreset)simpleComboPreset];
+                P.IPCSearch.AutoActions[(Preset)simpleComboPreset];
             simple[ComboStateKeys.Enabled] =
                 P.IPCSearch.EnabledActions.Contains(
-                    (CustomComboPreset)simpleComboPreset);
+                    (Preset)simpleComboPreset);
         }
 
         #endregion
@@ -202,8 +204,8 @@ public partial class Helper(ref Leasing leasing)
 
         #region Override the Values with any IPC-control
 
-        var advancedComboPreset = (CustomComboPreset)
-            Enum.Parse(typeof(CustomComboPreset), advancedKey, true);
+        var advancedComboPreset = (Preset)
+            Enum.Parse(typeof(Preset), advancedKey, true);
         advancedValue[ComboStateKeys.AutoMode] =
             P.IPCSearch.AutoActions[advancedComboPreset];
         advancedValue[ComboStateKeys.Enabled] =
@@ -407,10 +409,10 @@ public partial class Helper(ref Leasing leasing)
     {
         get
         {
-            // If the IPC status was checked within the last 20 minutes:
+            // If the IPC status was checked within the last 45 minutes:
             // return the cached value
             if (_ipcEnabled is not null &&
-                !EZ.Throttle("ipcLastStatusChecked", TS.FromMinutes(20)))
+                !EZ.Throttle("ipcLastStatusChecked", TS.FromMinutes(45)))
                 return _ipcEnabled!.Value;
 
             // Otherwise, check the status and cache the result

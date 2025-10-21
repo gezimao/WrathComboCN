@@ -4,8 +4,9 @@ using System;
 using System.Collections.Generic;
 using WrathCombo.CustomComboNS;
 using WrathCombo.CustomComboNS.Functions;
-using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 using WrathCombo.Extensions;
+using static WrathCombo.Combos.PvE.PCT.Config;
+using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 #endregion
 
 namespace WrathCombo.Combos.PvE;
@@ -13,11 +14,8 @@ namespace WrathCombo.Combos.PvE;
 internal partial class PCT
 {
     #region Variables
-
     // Gauge Stuff
     internal static PCTGauge gauge = GetJobGauge<PCTGauge>();
-
-
     //Useful Bools
     internal static bool ScenicMuseReady => gauge.LandscapeMotifDrawn && ActionReady(ScenicMuse);
     internal static bool LivingMuseReady => ActionReady(LivingMuse) && gauge.CreatureMotifDrawn;
@@ -27,20 +25,19 @@ internal partial class PCT
     internal static bool WeaponMotifReady => !gauge.WeaponMotifDrawn && LevelChecked(WeaponMotif) && !HasStatusEffect(Buffs.StarryMuse) && !HasStatusEffect(Buffs.HammerTime);
     internal static bool LandscapeMotifReady => !gauge.LandscapeMotifDrawn && LevelChecked(LandscapeMotif) && !HasStatusEffect(Buffs.StarryMuse);
     internal static bool PaletteReady => SubtractivePalette.LevelChecked() && !HasStatusEffect(Buffs.SubtractivePalette) && !HasStatusEffect(Buffs.MonochromeTones) && 
-                                            (HasStatusEffect(Buffs.SubtractiveSpectrum) || gauge.PalleteGauge >= 50 && ScenicCD > 40 || gauge.PalleteGauge == 100);
+                                            (HasStatusEffect(Buffs.SubtractiveSpectrum) || 
+                                             gauge.PalleteGauge >= 50 && ScenicCD > 35 || 
+                                             gauge.PalleteGauge == 100 && HasStatusEffect(Buffs.Aetherhues2)|| 
+                                             gauge.PalleteGauge >= 50 && ScenicCD < 3 );
     internal static bool HasPaint => gauge.Paint > 0;
-    internal static bool BurstPhaseReady => LevelChecked(StarPrism) && InCombat() && (ScenicCD <= 5 || HasStatusEffect(Buffs.StarryMuse) && gauge.PalleteGauge >= 50);
-
-
-
     //Buff Tracking
     internal static float ScenicCD => GetCooldownRemainingTime(StarryMuse);
     internal static float SteelCD => GetCooldownRemainingTime(StrikingMuse);
-
-
     #endregion
 
     #region Functions
+    
+    #region Hyper Phantasia
     internal static bool HyperPhantasiaMovementPaint()
     //Increase priority for using casts as soon as possible to avoid losing DPS and ensure all abilities fit within buff windows
     //previously, there were situations where Wrath prioritized using Hammer Combo over casts during hyperphantasia, which would prevent us from generating Rainbow Bright in time when movement is required
@@ -48,88 +45,66 @@ internal partial class PCT
     {
         if (GetStatusEffectStacks(Buffs.Hyperphantasia) > 0 && HasStatusEffect(Buffs.Inspiration) && HasPaint)
         {
-            if ((IsEnabled(CustomComboPreset.PCT_ST_AdvancedMode_MovementOption_HolyInWhite) || IsEnabled(CustomComboPreset.PCT_ST_SimpleMode)) 
+            if ((IsEnabled(Preset.PCT_ST_AdvancedMode_MovementOption_HolyInWhite) || IsEnabled(Preset.PCT_ST_SimpleMode)) 
                 && HolyInWhite.LevelChecked())
                 return true;
-
-            if ((IsEnabled(CustomComboPreset.PCT_ST_AdvancedMode_MovementOption_CometinBlack) || IsEnabled(CustomComboPreset.PCT_ST_SimpleMode)) 
+            if ((IsEnabled(Preset.PCT_ST_AdvancedMode_MovementOption_CometinBlack) || IsEnabled(Preset.PCT_ST_SimpleMode)) 
                 && CometinBlack.LevelChecked())
                 return true;
         }
         return false;
     }
-
-
-    internal static uint BurstWindow(uint actionId)
+    
+    #endregion
+    
+    #region Standard Burst Window
+    internal static uint BurstWindowStandard(uint actionId)
     {
-        if (LandscapeMotifReady) //Emergency Landscape Paint if someone started a fight with no motifs.
-            return OriginalHook(LandscapeMotif);        
-
-        if (!HasStatusEffect(Buffs.StarryMuse))
+        if (CanWeave())
         {
-            if (SteelMuseReady && HasCharges(SteelMuse))
-                return OriginalHook(SteelMuse);
-
-            if (ActionReady(HammerStamp) && !HasStatusEffect(Buffs.StarryMuse) && ScenicCD < 1 && !JustUsed(HammerStamp, 3f) && GetStatusEffectStacks(Buffs.HammerTime) == 3)
-                return HammerStamp;
-
-            if (CanWeave() && ActionReady(SubtractivePalette) && !HasStatusEffect(Buffs.SubtractivePalette) && 
-                !HasStatusEffect(Buffs.MonochromeTones) && IsOffCooldown(ScenicMuse) &&
+            if (ActionReady(SubtractivePalette) && 
+                !HasStatusEffect(Buffs.SubtractivePalette) && 
+                !HasStatusEffect(Buffs.MonochromeTones) &&
                 (HasStatusEffect(Buffs.SubtractiveSpectrum) || gauge.PalleteGauge >= 50))
                 return SubtractivePalette;
-
-            if (ScenicMuseReady && (CanDelayedWeave() || !CanWeave()) && IsOffCooldown(ScenicMuse)) // The !canweave option is specifically so that it can minimize drift IF it does not catch the delayed weave in time.
-                return OriginalHook(ScenicMuse);            
-        }
-
-        if (HyperPhantasiaMovementPaint() && IsMoving())
-            return HasStatusEffect(Buffs.MonochromeTones) ? OriginalHook(CometinBlack) : OriginalHook(HolyInWhite);
-
-        if (HasStatusEffect(Buffs.SubtractivePalette) && (GetStatusEffectRemainingTime(Buffs.StarryMuse) > 10 || !HasStatusEffect(Buffs.StarryMuse)))
-            return OriginalHook(BlizzardinCyan);
-
-        if (HasStatusEffect(Buffs.StarryMuse) && GetStatusEffectRemainingTime(Buffs.StarryMuse) < 15)
-        {
-            if (CanSpellWeave() && !HasStatusEffect(Buffs.MonochromeTones))
-            {                
-                if (ActionReady(SubtractivePalette) && !HasStatusEffect(Buffs.Starstruck) &&
-                    !HasStatusEffect(Buffs.SubtractivePalette) && (HasStatusEffect(Buffs.SubtractiveSpectrum) || gauge.PalleteGauge >= 50))
-                    return SubtractivePalette;
+            
+            if (SteelMuseReady && HasCharges(SteelMuse))
+                return OriginalHook(SteelMuse);
                
-                if (PortraitReady && IsOffCooldown(OriginalHook(MogoftheAges)))
-                    return OriginalHook(MogoftheAges);
+            if (PortraitReady && IsOffCooldown(OriginalHook(MogoftheAges)) && !JustUsed(StarryMuse))
+                return OriginalHook(MogoftheAges);
 
-                if (LivingMuseReady && !PortraitReady)
-                    return OriginalHook(LivingMuse);
-            }
-
-            if (LevelChecked(CometinBlack) && HasStatusEffect(Buffs.MonochromeTones) && HasPaint && HasStatusEffect(Buffs.HammerTime))
-                return OriginalHook(CometinBlack);  
-
-            if (ActionReady(OriginalHook(HammerStamp)))
-                return OriginalHook(HammerStamp);
-
-            if (HasStatusEffect(Buffs.Starstruck))
-                return StarPrism;
-
-            if (HasStatusEffect(Buffs.RainbowBright))
-                return RainbowDrip;
-
-            if (CometinBlack.LevelChecked() && HasStatusEffect(Buffs.MonochromeTones) && HasPaint && !HasStatusEffect(Buffs.RainbowBright))
-                return OriginalHook(CometinBlack);
-
-            if (HasStatusEffect(Buffs.SubtractivePalette))
-                return OriginalHook(BlizzardinCyan);
+            if (LivingMuseReady && !PortraitReady && !JustUsed(StarryMuse))
+                return OriginalHook(LivingMuse);
         }
-        return actionId;
+        
+        if (HasStatusEffect(Buffs.RainbowBright)) //Use as soon as 5 stacks are spent
+            return RainbowDrip;
+        
+        if (ActionReady(OriginalHook(HammerStamp)) && 
+            !HasStatusEffect(Buffs.Hyperphantasia) && //wait until after HP are gone to burn hammers
+            GetStatusEffectRemainingTime(Buffs.StarryMuse) < 18) //before 92 dont burn hammers first
+            return OriginalHook(HammerStamp);
+    
+        if (HasStatusEffect(Buffs.Starstruck) && 
+            (GetStatusEffectRemainingTime(Buffs.StarryMuse) < 18 || //Normal use
+             !HasStatusEffect(Buffs.SubtractivePalette))) //Simple opening, but time to weave a sub palette
+            return StarPrism;
+        
+        if (HyperPhantasiaMovementPaint() && IsMoving()) //in case you need to move to burn HP
+            return HasStatusEffect(Buffs.MonochromeTones) ? OriginalHook(CometinBlack) : OriginalHook(HolyInWhite);
+        
+        if (CometinBlack.LevelChecked() && GetStatusEffectRemainingTime(Buffs.StarryMuse) < 18 &&
+            HasStatusEffect(Buffs.MonochromeTones) && HasPaint)
+            return OriginalHook(CometinBlack);
+                
+        return HasStatusEffect(Buffs.SubtractivePalette) ? OriginalHook(BlizzardinCyan) : actionId;
     }
-
-   
+    #endregion
+    
     #endregion
 
     #region ID's
-
-    public const byte JobID = 42;
 
     public const uint
         BlizzardinCyan = 34653,
@@ -167,6 +142,8 @@ internal partial class PCT
         SteelMuse = 35348,
         SubtractivePalette = 34683,
         StoneIIinYellow = 34660,
+        TempuraCoat = 34685,
+        TempuraGrassa = 34686,
         ThunderIIinMagenta = 34661,
         ThunderinMagenta = 34655,
         WaterinBlue = 34652,
@@ -177,10 +154,12 @@ internal partial class PCT
     {
         public const ushort
             SubtractivePalette = 3674,
+            Aetherhues2 = 3676,
             RainbowBright = 3679,
             HammerTime = 3680,
             MonochromeTones = 3691,
             StarryMuse = 3685,
+            TempuraCoat = 3686,
             Hyperphantasia = 3688,
             Inspiration = 3689,
             SubtractiveSpectrum = 3690,
@@ -195,43 +174,47 @@ internal partial class PCT
     #endregion
 
     #region Openers
-
-    internal static PCTopenerMaxLevel1 Opener1 = new();
-    internal static PCTopenerMaxLevel2 Opener2 = new();
-
-    private static PCTGauge Gauge = GetJobGauge<PCTGauge>();
-
+    internal static PCT2ndStarryMaxLvl SecondStarryMaxLvl = new();
+    internal static PCT3rdStarryMaxLvl ThirdStarryMaxLvl = new();
+    internal static PCT2ndStarryLvl90 SecondStarryLvl90 = new();
+    internal static PCT3rdStarryLvl90 ThirdStarryLvl90 = new();
+    
     internal static WrathOpener Opener()
     {
-        if (Opener1.LevelChecked && Config.PCT_Opener_Choice == 0)
-            return Opener1;
+        if (SecondStarryLvl90.LevelChecked && PCT_Opener_Choice == 0)
+            return SecondStarryLvl90;
 
-        if (Opener2.LevelChecked && Config.PCT_Opener_Choice == 1)
-            return Opener2;
-
+        if (ThirdStarryLvl90.LevelChecked && PCT_Opener_Choice == 1)
+            return ThirdStarryLvl90;
+        
+        if (SecondStarryMaxLvl.LevelChecked && PCT_Opener_Choice == 0)
+            return SecondStarryMaxLvl;
+        
+        if (ThirdStarryMaxLvl.LevelChecked && PCT_Opener_Choice == 1)
+            return ThirdStarryMaxLvl;
+        
         return WrathOpener.Dummy;
     }
-
+    
     public static bool HasMotifs()
     {
 
-        if (!Gauge.CanvasFlags.HasFlag(Dalamud.Game.ClientState.JobGauge.Enums.CanvasFlags.Pom))
+        if (!gauge.CanvasFlags.HasFlag(Dalamud.Game.ClientState.JobGauge.Enums.CanvasFlags.Pom))
             return false;
 
-        if (!Gauge.CanvasFlags.HasFlag(Dalamud.Game.ClientState.JobGauge.Enums.CanvasFlags.Weapon))
+        if (!gauge.CanvasFlags.HasFlag(Dalamud.Game.ClientState.JobGauge.Enums.CanvasFlags.Weapon))
             return false;
 
-        if (!Gauge.CanvasFlags.HasFlag(Dalamud.Game.ClientState.JobGauge.Enums.CanvasFlags.Landscape))
+        if (!gauge.CanvasFlags.HasFlag(Dalamud.Game.ClientState.JobGauge.Enums.CanvasFlags.Landscape))
             return false;
 
         return true;
     }
-
-    internal class PCTopenerMaxLevel1 : WrathOpener
+    
+    internal class PCT2ndStarryMaxLvl : WrathOpener
     {
         //2nd GCD Starry Opener
         public override int MinOpenerLevel => 100;
-
         public override int MaxOpenerLevel => 109;
         public override List<uint> OpenerActions { get; set; } =
         [
@@ -256,7 +239,7 @@ internal partial class PCT
             ClawMotif,
             ClawedMuse,//20
         ];
-        internal override UserData? ContentCheckConfig => Config.PCT_Balance_Content;
+        internal override UserData? ContentCheckConfig => PCT_Balance_Content;
 
         public override List<(int[] Steps, uint NewAction, Func<bool> Condition)> SubstitutionSteps { get; set; } =
 [
@@ -290,12 +273,11 @@ internal partial class PCT
             return true;
         }
     }
-
-    internal class PCTopenerMaxLevel2 : WrathOpener
+    
+    internal class PCT3rdStarryMaxLvl : WrathOpener
     {
         //3rd GCD Starry Opener
         public override int MinOpenerLevel => 100;
-
         public override int MaxOpenerLevel => 109;
         public override List<uint> OpenerActions { get; set; } =
         [
@@ -322,7 +304,7 @@ internal partial class PCT
             ClawMotif,
             ClawedMuse
         ];
-        internal override UserData? ContentCheckConfig => Config.PCT_Balance_Content;
+        internal override UserData? ContentCheckConfig => PCT_Balance_Content;
 
         public override List<(int[] Steps, Func<bool> Condition)> SkipSteps { get; set; } = [([18], () => !HasStatusEffect(Buffs.RainbowBright))];
 
@@ -357,7 +339,128 @@ internal partial class PCT
 
             return true;
         }
-        
     }
+    
+     internal class PCT2ndStarryLvl90 : WrathOpener
+    {
+        //2nd GCD Starry Opener
+        public override int MinOpenerLevel => 90;
+        public override int MaxOpenerLevel => 90;
+        
+        public override List<uint> OpenerActions { get; set; } =
+        [
+            FireInRed,
+            StrikingMuse,
+            AeroInGreen,
+            StarryMuse,
+            HammerStamp,
+            PomMuse,
+            SubtractivePalette,
+            WingMotif,
+            WingedMuse,
+            HammerBrush,
+            MogoftheAges,
+            PolishingHammer,
+            ThunderinMagenta,
+            BlizzardinCyan,
+            StoneinYellow,//15
+            CometinBlack,
+            WaterInBlue,
+            FireInRed//20
+        ];
+        internal override UserData? ContentCheckConfig => PCT_Balance_Content;
+
+        public override List<(int[] Steps, uint NewAction, Func<bool> Condition)> SubstitutionSteps { get; set; } =
+[
+            ([13, 14, 15], BlizzardinCyan, () => OriginalHook(BlizzardinCyan) == BlizzardinCyan),
+            ([13, 14, 15], StoneinYellow, () => OriginalHook(BlizzardinCyan) == StoneinYellow),
+            ([13, 14, 15], ThunderinMagenta, () => OriginalHook(BlizzardinCyan) == ThunderinMagenta),
+            ([16], HolyInWhite, () => !HasStatusEffect(Buffs.MonochromeTones)),
+        ];
+
+        public override bool HasCooldowns()
+        {
+            if (!IsOffCooldown(StarryMuse))
+                return false;
+
+            if (GetRemainingCharges(LivingMuse) < 2)
+                return false;
+
+            if (GetRemainingCharges(SteelMuse) < 2)
+                return false;
+
+            if (!HasMotifs())
+                return false;
+
+            if (HasStatusEffect(Buffs.SubtractivePalette))
+                return false;
+
+            return true;
+        }
+    }
+     
+     internal class PCT3rdStarryLvl90 : WrathOpener
+    {
+        //3rd GCD Starry Opener
+        public override int MinOpenerLevel => 90;
+        public override int MaxOpenerLevel => 90;
+        public override List<uint> OpenerActions { get; set; } =
+        [
+            FireInRed,
+            StrikingMuse,
+            AeroInGreen,
+            WaterInBlue,
+            StarryMuse,
+            HammerStamp,
+            PomMuse,
+            SubtractivePalette,
+            WingMotif,
+            WingedMuse,
+            HammerBrush,
+            MogoftheAges,
+            PolishingHammer,
+            BlizzardinCyan,
+            StoneinYellow,
+            ThunderinMagenta,
+            CometinBlack,
+            FireInRed,
+            AeroInGreen,
+            Role.Swiftcast, //20
+            WaterInBlue
+        ];
+        internal override UserData? ContentCheckConfig => PCT_Balance_Content;
+        
+        public override List<(int[] Steps, uint NewAction, Func<bool> Condition)> SubstitutionSteps { get; set; } =
+        [
+            ([14, 15, 16], BlizzardinCyan, () => OriginalHook(BlizzardinCyan) == BlizzardinCyan),
+             ([14, 15, 16], StoneinYellow, () => OriginalHook(BlizzardinCyan) == StoneinYellow),
+            ([14,15,16], ThunderinMagenta, () => OriginalHook(BlizzardinCyan) == ThunderinMagenta),
+            ([17], HolyInWhite, () => !HasStatusEffect(Buffs.MonochromeTones)),
+        ];
+
+        public override bool HasCooldowns()
+        {
+            if (!IsOffCooldown(StarryMuse))
+                return false;
+
+            if (GetRemainingCharges(LivingMuse) < 2)
+                return false;
+
+            if (GetRemainingCharges(SteelMuse) < 2)
+                return false;
+
+            if (!HasMotifs())
+                return false;
+
+            if (HasStatusEffect(Buffs.SubtractivePalette))
+                return false;
+
+            if (IsOnCooldown(Role.Swiftcast))
+                return false;
+
+            return true;
+        }
+    }
+     
 #endregion
 }

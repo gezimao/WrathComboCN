@@ -1,11 +1,15 @@
 ﻿#region
-
-using System.Collections.Generic;
 using Dalamud.Game.ClientState.JobGauge.Types;
 using Dalamud.Game.ClientState.Objects.Types;
+using Dalamud.Game.ClientState.Statuses;
+using System.Collections.Generic;
+using ECommons.GameFunctions;
 using WrathCombo.CustomComboNS;
 using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Data;
+using WrathCombo.Extensions;
+using TS = System.TimeSpan;
+using static WrathCombo.Combos.PvE.WHM.Config;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 
 // ReSharper disable AccessToStaticMemberViaDerivedType
@@ -27,12 +31,13 @@ internal partial class WHM
     internal static bool NeedsDoT()
     {
         var dotAction = OriginalHook(Aero);
-        var hpThreshold = Config.WHM_ST_DPS_AeroOptionSubOption ==
-                          (int)Config.BossAvoidance.Off ||
-                          !InBossEncounter()
-            ? Config.WHM_ST_DPS_AeroOption
+        var hpThreshold = IsNotEnabled(Preset.WHM_ST_Simple_DPS)
+            ? computeHpThreshold()
             : 0;
         AeroList.TryGetValue(dotAction, out var dotDebuffID);
+        var dotRefresh = IsNotEnabled(Preset.WHM_ST_Simple_DPS)
+            ? WHM_ST_MainCombo_DoT_Threshold
+            : 2.5;
         var dotRemaining = GetStatusEffectRemainingTime(dotDebuffID, CurrentTarget);
 
         return ActionReady(dotAction) &&
@@ -40,101 +45,236 @@ internal partial class WHM
                !JustUsedOn(dotAction, CurrentTarget, 5f) &&
                HasBattleTarget() &&
                GetTargetHPPercent() > hpThreshold &&
-               dotRemaining <= Config.WHM_ST_MainCombo_DoT_Threshold;
+               dotRemaining <= dotRefresh;
     }
 
-    internal static bool BellRaidwideCheckPassed
+    internal static int computeHpThreshold()
     {
-        get
+        if (TargetIsBoss() && InBossEncounter())
         {
-            if (!IsEnabled(CustomComboPreset.WHM_AoEHeals_LiturgyOfTheBell))
-                return false;
-            
-            // Skip any checks if Raidwide checking is not enabled
-            if (!Config.WHM_AoEHeals_LiturgyRaidwideOnly)
-                return true;
+            return WHM_ST_DPS_AeroOptionBoss;
+        }
 
-            // Skip Raidwide check if not in a boss fight, and that check is restricted to bosses
-            if (Config.WHM_AoEHeals_LiturgyRaidwideOnlyBoss ==
-                (int)Config.BossRequirement.On &&
-                !InBossEncounter())
-                return true;
-            
-            if (!RaidWideCasting())
-                return false;
-            
-            return true;
+        switch ((int)WHM_ST_DPS_AeroOptionSubOption)
+        {
+            case (int)EnemyRestriction.AllEnemies:
+                return WHM_ST_DPS_AeroOptionNonBoss;
+            case (int)EnemyRestriction.OnlyBosses:
+                return InBossEncounter() ? WHM_ST_DPS_AeroOptionNonBoss : 0;
+            default:
+            case (int)EnemyRestriction.NonBosses:
+                return !InBossEncounter() ? WHM_ST_DPS_AeroOptionNonBoss : 0;
         }
     }
 
-    #region Heal Priority
+    #region Get ST Heals
 
-    public static int GetMatchingConfigST(
-        int i,
-        IGameObject? optionalTarget,
-        out uint action,
-        out bool enabled)
+    internal static int GetMatchingConfigST(int i, IGameObject? OptionalTarget,
+        out uint action, out bool enabled)
     {
-        //var healTarget = optionalTarget ?? GetHealTarget(Config.WHM_STHeals_UIMouseOver);
-        //leaving in case Regen gets a slider and is added
-
-        var canWeave = CanWeave(0.3);
+        IGameObject? healTarget = OptionalTarget ?? SimpleTarget.Stack.AllyToHeal;
+        bool stopHot = WHM_STHeals_RegenHPLower >=
+                       GetTargetHPPercent(healTarget,
+                           WHM_STHeals_IncludeShields);
+        float refreshTime = WHM_STHeals_RegenTimer;
+        bool tankCheck = healTarget.IsInParty() && healTarget.GetRole() is CombatRole.Tank;
+        Status? regenHoT = GetStatusEffect(Buffs.Regen, healTarget);
+        Status? BenisonShield = GetStatusEffect(Buffs.DivineBenison, healTarget);
 
         switch (i)
         {
             case 0:
                 action = Benediction;
-
-                enabled = IsEnabled(CustomComboPreset.WHM_STHeals_Benediction) &&
-                          (!Config.WHM_STHeals_BenedictionWeave ||
-                           Config.WHM_STHeals_BenedictionWeave && canWeave);
-
-                return Config.WHM_STHeals_BenedictionHP;
-
+                enabled = IsEnabled(Preset.WHM_STHeals_Benediction) &&
+                          (!WHM_STHeals_BenedictionWeave || CanWeave());
+                return WHM_STHeals_BenedictionHP;
             case 1:
                 action = Tetragrammaton;
-
-                enabled = IsEnabled(CustomComboPreset.WHM_STHeals_Tetragrammaton) &&
-                          (!Config.WHM_STHeals_TetraWeave ||
-                           Config.WHM_STHeals_TetraWeave && canWeave);
-
-                return Config.WHM_STHeals_TetraHP;
-
+                enabled = IsEnabled(Preset.WHM_STHeals_Tetragrammaton) &&
+                          (!WHM_STHeals_TetraBalance || 
+                           GetRemainingCharges(Tetragrammaton) >= GetRemainingCharges(DivineBenison)) &&
+                          (!WHM_STHeals_TetraWeave || CanWeave());
+                return WHM_STHeals_TetraHP;
             case 2:
                 action = DivineBenison;
-
-                enabled = IsEnabled(CustomComboPreset.WHM_STHeals_Benison) &&
-                          (!Config.WHM_STHeals_BenisonWeave ||
-                           Config.WHM_STHeals_BenisonWeave && canWeave);
-
-                return Config.WHM_STHeals_BenisonHP;
-
+                enabled = IsEnabled(Preset.WHM_STHeals_Benison) &&
+                          BenisonShield == null &&
+                          GetRemainingCharges(DivineBenison) >
+                          WHM_STHeals_BenisonCharges &&
+                          (!WHM_STHeals_BenisonBalance || 
+                           GetRemainingCharges(DivineBenison) >= GetRemainingCharges(Tetragrammaton)) &&
+                          (!WHM_STHeals_BenisonWeave || CanWeave());
+                return WHM_STHeals_BenisonHP;
             case 3:
                 action = Aquaveil;
-
-                enabled = IsEnabled(CustomComboPreset.WHM_STHeals_Aquaveil) &&
-                          (!Config.WHM_STHeals_AquaveilWeave ||
-                           Config.WHM_STHeals_AquaveilWeave && canWeave);
-
-                return Config.WHM_STHeals_AquaveilHP;
-
+                enabled = IsEnabled(Preset.WHM_STHeals_Aquaveil) &&
+                          (tankCheck || !IsInParty() || !WHM_STHeals_AquaveilOptions[2]) &&
+                          (!WHM_STHeals_AquaveilOptions[1] || !InBossEncounter()) &&
+                          (!WHM_STHeals_AquaveilOptions[0] || CanWeave());
+                return WHM_STHeals_AquaveilHP;
             case 4:
-                action = Temperance;
+                action = AfflatusSolace;
+                enabled = IsEnabled(Preset.WHM_STHeals_Solace) &&
+                          CanLily && !BloodLilyReady;
+                return WHM_STHeals_SolaceHP;
+            case 5:
+                action = Regen;
+                enabled = IsEnabled(Preset.WHM_STHeals_Regen) &&
+                          !stopHot &&
+                          (regenHoT is null ||
+                           regenHoT.RemainingTime <= refreshTime);
+                return WHM_STHeals_RegenHPUpper;
 
-                enabled = IsEnabled(CustomComboPreset.WHM_STHeals_Temperance) &&
-                          (!Config.WHM_STHeals_TemperanceWeave ||
-                           Config.WHM_STHeals_TemperanceWeave && canWeave) &&
-                          ContentCheck.IsInConfiguredContent(
-                              Config.WHM_STHeals_TemperanceDifficulty,
-                              Config.WHM_STHeals_TemperanceDifficultyListSet);
+            case 6:
+                action = OriginalHook(Temperance);
+                enabled = IsEnabled(Preset.WHM_STHeals_Temperance) &&
+                          (!WHM_STHeals_TemperanceOptions[1] ||
+                           !InBossEncounter()) &&
+                          (!WHM_STHeals_TemperanceOptions[0] || CanWeave());
+                return WHM_STHeals_TemperanceHP;
 
-                return Config.WHM_STHeals_TemperanceHP;
+            case 7:
+                action = Asylum;
+                enabled = IsEnabled(Preset.WHM_STHeals_Asylum) &&
+                          TimeStoodStill >= TS.FromSeconds(3) &&
+                          (!WHM_STHeals_AsylumOptions[1] ||
+                           !InBossEncounter()) &&
+                          (!WHM_STHeals_AsylumOptions[0] || CanWeave());
+                return WHM_STHeals_AsylumHP;
+            case 8:
+                action = LiturgyOfTheBell;
+                enabled =
+                    IsEnabled(Preset.WHM_STHeals_LiturgyOfTheBell) &&
+                    !HasStatusEffect(Buffs.LiturgyOfTheBell) &&
+                    TimeStoodStill >= TS.FromSeconds(3) &&
+                    (!WHM_STHeals_LiturgyOfTheBellOptions[1] ||
+                     !InBossEncounter()) &&
+                    (!WHM_STHeals_LiturgyOfTheBellOptions[0] || CanWeave());
+                return WHM_STHeals_LiturgyOfTheBellHP;
         }
 
         enabled = false;
         action = 0;
-
         return 0;
+    }
+
+    #endregion
+
+    #region Get Aoe Heals
+
+    public static int GetMatchingConfigAoE(int i, IGameObject? OptionalTarget,
+        out uint action, out bool enabled)
+    {
+        var medica3Check = !HasStatusEffect(Buffs.Medica3) ||
+                           GetStatusEffectRemainingTime(Buffs.Medica3) <=
+                           WHM_AoEHeals_MedicaTime;
+        var medica2Check = !HasStatusEffect(Buffs.Medica2) ||
+                           GetStatusEffectRemainingTime(Buffs.Medica2) <=
+                           WHM_AoEHeals_MedicaTime;
+
+        switch (i)
+        {
+            case 0:
+                action = OriginalHook(Medica2);
+                enabled = IsEnabled(Preset.WHM_AoEHeals_Medica2) &&
+                          (LevelChecked(Medica3) && medica3Check ||
+                           !LevelChecked(Medica3) && medica2Check);
+                return WHM_AoEHeals_Medica2HP;
+
+            case 1:
+                action = Cure3;
+                enabled = IsEnabled(Preset.WHM_AoEHeals_Cure3) &&
+                          NumberOfAlliesInRange(Cure3, OptionalTarget)
+                          >= WHM_AoEHeals_Cure3Allies &&
+                          (LocalPlayer.CurrentMp >= WHM_AoEHeals_Cure3MP ||
+                           HasStatusEffect(Buffs.ThinAir));
+                return WHM_AoEHeals_Cure3HP;
+
+            case 2:
+                action = PlenaryIndulgence;
+                enabled = IsEnabled(Preset.WHM_AoEHeals_Plenary) &&
+                          (CanWeave() || !WHM_AoEHeals_PlenaryWeave);
+                return WHM_AoEHeals_PlenaryHP;
+
+            case 3:
+                action = Temperance;
+                enabled = IsEnabled(Preset.WHM_AoEHeals_Temperance) &&
+                          (CanWeave() || !WHM_AoEHeals_TemperanceWeave) &&
+                          !HasStatusEffect(Buffs.DivineGrace) &&
+                          ContentCheck.IsInConfiguredContent(
+                              WHM_AoEHeals_TemperanceDifficulty,
+                              WHM_AoEHeals_TemperanceDifficultyListSet);
+                return WHM_AoEHeals_TemperanceHP;
+
+            case 4:
+                action = Asylum;
+                enabled = IsEnabled(Preset.WHM_AoEHeals_Asylum) &&
+                          (CanWeave() || !WHM_AoEHeals_AsylumWeave) &&
+                          !IsMoving() &&
+                          ContentCheck.IsInConfiguredContent(
+                              WHM_AoEHeals_AsylumDifficulty,
+                              WHM_AoEHeals_AsylumDifficultyListSet);
+                return WHM_AoEHeals_AsylumHP;
+
+            case 5:
+                action = LiturgyOfTheBell;
+                enabled =
+                    IsEnabled(Preset.WHM_AoEHeals_LiturgyOfTheBell) &&
+                    !HasStatusEffect(Buffs.LiturgyOfTheBell) &&
+                    (CanWeave() || !WHM_AoEHeals_LiturgyWeave) &&
+                    ContentCheck.IsInConfiguredContent(
+                        WHM_AoEHeals_LiturgyDifficulty,
+                        WHM_AoEHeals_LiturgyDifficultyListSet);
+                return WHM_AoEHeals_LiturgyHP;
+
+            case 6:
+                action = AfflatusRapture;
+                enabled = IsEnabled(Preset.WHM_AoEHeals_Rapture) &&
+                          CanLily && !BloodLilyReady;
+                return WHM_AoEHeals_RaptureHP;
+
+            case 7:
+                action = Assize;
+                enabled = IsEnabled(Preset.WHM_AoEHeals_Assize) &&
+                          (!WHM_AoEHeals_AssizeWeave || CanWeave());
+                return WHM_AoEHeals_AssizeHP;
+
+            case 8:
+                action = DivineCaress;
+                enabled = IsEnabled(Preset.WHM_AoEHeals_DivineCaress) &&
+                          (!WHM_AoEHeals_DivineCaressWeave || CanWeave());
+                return WHM_AoEHeals_DivineCaressHP;
+        }
+
+        enabled = false;
+        action = 0;
+        return 0;
+    }
+
+    #endregion
+
+    #region Raidwides
+
+    internal static bool RaidwideAsylum()
+    {
+        return IsEnabled(Preset.WHM_Raidwide_Asylum) &&
+               ActionReady(Asylum) &&
+               CanWeave() && RaidWideCasting();
+    }
+
+    internal static bool RaidwideTemperance()
+    {
+        return IsEnabled(Preset.WHM_Raidwide_Temperance) &&
+               ActionReady(OriginalHook(Temperance)) &&
+               CanWeave() && RaidWideCasting();
+    }
+
+    internal static bool RaidwideLiturgyOfTheBell()
+    {
+        return IsEnabled(Preset.WHM_Raidwide_LiturgyOfTheBell) &&
+               ActionReady(LiturgyOfTheBell) &&
+               !HasStatusEffect(Buffs.LiturgyOfTheBell) &&
+               RaidWideCasting() && CanWeave();
     }
 
     #endregion
@@ -157,7 +297,7 @@ internal partial class WHM
     internal static WHMGauge gauge = GetJobGauge<WHMGauge>();
     internal static bool CanLily => gauge.Lily > 0;
     internal static bool FullLily => gauge.Lily == 3;
-    internal static bool AlmostFullLily => gauge is { Lily: 2, LilyTimer: >= 17000 };
+    internal static bool AlmostFullLily => gauge is { Lily: 2, LilyTimer: >= 12000 };
     internal static bool BloodLilyReady => gauge.BloodLily == 3;
 
     #endregion
@@ -200,7 +340,7 @@ internal partial class WHM
             Dia,
         ];
 
-        internal override UserData ContentCheckConfig => Config.WHM_Balance_Content;
+        internal override UserData ContentCheckConfig => WHM_Balance_Content;
 
         public override bool HasCooldowns()
         {
@@ -217,9 +357,6 @@ internal partial class WHM
     #endregion
 
     #region ID's
-
-    public const byte ClassID = 6;
-    public const byte JobID = 24;
 
     public const uint
         // DPS
@@ -291,5 +428,11 @@ internal partial class WHM
             Dia = 1871;
     }
 
+    public static class Traits
+    {
+        public const ushort
+            EnhancedDivineBenison = 490,
+            EnhancedTetragrammaton = 625;
+    }
     #endregion
 }

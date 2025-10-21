@@ -12,28 +12,25 @@ namespace WrathCombo.Combos.PvE;
 
 internal partial class MCH
 {
-    internal static MCHOpenerMaxLevel Lvl100Standard = new();
-    internal static MCHOpenerLvl90EarlyTools Lvl90EarlyTools = new();
+    private static int BSUsed =>
+        CombatActions.Count(x => x == BarrelStabilizer);
 
-    internal static int BSUsed => CombatActions.Count(x => x == BarrelStabilizer);
+    private static bool CanGaussRound =>
+        GetRemainingCharges(OriginalHook(GaussRound)) >= GetRemainingCharges(OriginalHook(Ricochet));
 
-    internal static bool UseGaussRound => GetRemainingCharges(OriginalHook(GaussRound)) >= GetRemainingCharges(OriginalHook(Ricochet));
+    private static bool CanRicochet =>
+        GetRemainingCharges(OriginalHook(Ricochet)) > GetRemainingCharges(OriginalHook(GaussRound));
 
-    internal static bool UseRicochet => GetRemainingCharges(OriginalHook(Ricochet)) > GetRemainingCharges(OriginalHook(GaussRound));
+    #region Queen
 
-    internal static bool HasNotWeaved =>
-        GetAttackType(LastAction) !=
-        ActionAttackType.Ability;
-
-    internal static bool UseQueen()
+    private static bool CanQueen(bool simpleMode = false)
     {
-        if (!HasDoubleWeaved() && !HasStatusEffect(Buffs.Wildfire) &&
+        if (!HasStatusEffect(Buffs.Wildfire) &&
             !JustUsed(OriginalHook(Heatblast)) && ActionReady(RookAutoturret) &&
             !RobotActive && Battery >= 50)
         {
-            if ((MCH_ST_Adv_Turret_SubOption == 0 ||
-                 MCH_ST_Adv_Turret_SubOption == 1 && InBossEncounter() ||
-                 IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) && InBossEncounter()) &&
+            if ((MCH_ST_QueenBossOption == 0 || InBossEncounter() ||
+                 simpleMode && InBossEncounter()) &&
                 (GetCooldownRemainingTime(Wildfire) > GCD || !LevelChecked(Wildfire)))
             {
                 if (LevelChecked(BarrelStabilizer))
@@ -61,185 +58,255 @@ internal partial class MCH
                     return true;
             }
 
-            if (IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) && !InBossEncounter() && Battery is 100 ||
-                MCH_ST_Adv_Turret_SubOption == 1 && !InBossEncounter() && Battery >= MCH_ST_TurretUsage)
+            if (simpleMode && !InBossEncounter() && Battery is 100 ||
+                MCH_ST_QueenBossOption == 1 && !InBossEncounter() && Battery >= MCH_ST_TurretUsage)
                 return true;
         }
 
         return false;
     }
 
-    internal static bool Reassembled()
+    #endregion
+
+    #region Hypercharge
+
+    private static bool CanHypercharge(bool onAoE = false)
     {
-        if (!JustUsed(OriginalHook(Heatblast)) && !HasStatusEffect(Buffs.Reassembled) &&
-            ActionReady(Reassemble) && !JustUsed(OriginalHook(Heatblast)))
+        if (onAoE &
+            (Heat >= 50 || HasStatusEffect(Buffs.Hypercharged)) && LevelChecked(Hypercharge) &&
+            LevelChecked(AutoCrossbow) &&
+            (LevelChecked(BioBlaster) && GetCooldownRemainingTime(BioBlaster) > 10 ||
+             !LevelChecked(BioBlaster) || IsNotEnabled(Preset.MCH_AoE_Adv_Bioblaster)) &&
+            (LevelChecked(Flamethrower) && GetCooldownRemainingTime(Flamethrower) > 10 ||
+             !LevelChecked(Flamethrower) || IsNotEnabled(Preset.MCH_AoE_Adv_FlameThrower)))
+            return true;
+
+        if (!onAoE &&
+            (Heat >= 50 || HasStatusEffect(Buffs.Hypercharged)) &&
+            !IsComboExpiring(6) && ActionReady(Hypercharge) &&
+            CanWeave(GCD / 2))
         {
-            if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) && !InBossEncounter() ||
-                 IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[0] &&
-                 (MCH_ST_Adv_Excavator_SubOption == 1 && !InBossEncounter() ||
-                  IsNotEnabled(CustomComboPreset.MCH_ST_Adv_TurretQueen))) &&
-                LevelChecked(Excavator) && HasStatusEffect(Buffs.ExcavatorReady))
+            // Ensures Hypercharge is double weaved with WF
+            if (LevelChecked(FullMetalField) && JustUsed(FullMetalField) ||
+                !LevelChecked(FullMetalField) && ActionReady(Wildfire) ||
+                !LevelChecked(Wildfire))
                 return true;
 
-            if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) && InBossEncounter() ||
-                 IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[0] &&
-                 IsEnabled(CustomComboPreset.MCH_ST_Adv_TurretQueen) &&
-                 (MCH_ST_Adv_Excavator_SubOption == 0 ||
-                  MCH_ST_Adv_Excavator_SubOption == 1 && InBossEncounter())) &&
-                LevelChecked(Excavator) && HasStatusEffect(Buffs.ExcavatorReady) &&
-                (BSUsed is 1 ||
-                 BSUsed % 3 is 2 && Battery <= 40 ||
-                 BSUsed % 3 is 0 && Battery <= 50 ||
-                 BSUsed % 3 is 1 && Battery <= 60 ||
-                 GetStatusEffectRemainingTime(Buffs.ExcavatorReady) <= 6))
-                return true;
-
-            if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) ||
-                 IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[1]) &&
-                !LevelChecked(Excavator) && !MaxBattery && LevelChecked(Chainsaw) &&
-                GetCooldownRemainingTime(Chainsaw) <= GCD)
-                return true;
-
-            if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) ||
-                 IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[2]) &&
-                !MaxBattery && LevelChecked(AirAnchor) &&
-                GetCooldownRemainingTime(AirAnchor) <= GCD)
-                return true;
-
-            if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) ||
-                 IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[3]) &&
-                LevelChecked(Drill) &&
-                (!LevelChecked(AirAnchor) && MCH_ST_Reassembled[2] || !MCH_ST_Reassembled[2]) &&
-                ActionReady(Drill))
+            // Only Hypercharge when tools are on cooldown
+            if (DrillCD && AnchorCD && SawCD &&
+                (!LevelChecked(Wildfire) ||
+                 LevelChecked(Wildfire) &&
+                 (GetCooldownRemainingTime(Wildfire) > 40 ||
+                  IsOffCooldown(Wildfire) && !HasStatusEffect(Buffs.FullMetalMachinist))))
                 return true;
         }
 
         return false;
     }
 
-    internal static bool Tools(ref uint actionID)
-    {
-        if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) && !InBossEncounter() ||
-             IsEnabled(CustomComboPreset.MCH_ST_Adv_Excavator) && ReassembledExcavatorST &&
-             (MCH_ST_Adv_Excavator_SubOption == 1 && !InBossEncounter() ||
-              IsNotEnabled(CustomComboPreset.MCH_ST_Adv_TurretQueen))) &&
-            LevelChecked(Excavator) && HasStatusEffect(Buffs.ExcavatorReady))
-        {
-            actionID = Excavator;
+        #endregion
 
-            return true;
-        }
+    #region HP Treshold
 
-        if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) && InBossEncounter() ||
-             IsEnabled(CustomComboPreset.MCH_ST_Adv_Excavator) && ReassembledExcavatorST &&
-             IsEnabled(CustomComboPreset.MCH_ST_Adv_TurretQueen) &&
-             (MCH_ST_Adv_Excavator_SubOption == 0 ||
-              MCH_ST_Adv_Excavator_SubOption == 1 && InBossEncounter())) &&
-            LevelChecked(Excavator) && HasStatusEffect(Buffs.ExcavatorReady) &&
-            (BSUsed is 1 ||
-             BSUsed % 3 is 2 && Battery <= 40 ||
-             BSUsed % 3 is 0 && Battery <= 50 ||
-             BSUsed % 3 is 1 && Battery <= 60 ||
-             GetStatusEffectRemainingTime(Buffs.ExcavatorReady) <= 6))
-        {
-            actionID = Excavator;
+    private static int HPThresholdHypercharge =>
+        MCH_ST_HyperchargeBossOption == 1 ||
+        !TargetIsBoss() ? MCH_ST_HyperchargeHPOption : 0;
 
-            return true;
-        }
+    private static int HPThresholdReassemble =>
+        MCH_ST_ReassembleBossOption == 1 ||
+        !TargetIsBoss() ? MCH_ST_ReassembleHPOption : 0;
 
-        if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) ||
-             IsEnabled(CustomComboPreset.MCH_ST_Adv_Chainsaw) && ReassembledChainsawST) &&
-            !MaxBattery && !HasStatusEffect(Buffs.ExcavatorReady) && LevelChecked(Chainsaw) &&
-            GetCooldownRemainingTime(Chainsaw) <= GCD / 2)
-        {
-            actionID = Chainsaw;
+    private static int HPThresholdTools =>
+        MCH_ST_ToolsBossOption == 1 ||
+        !TargetIsBoss() ? MCH_ST_ToolsBossOption : 0;
 
-            return true;
-        }
-
-        if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) ||
-             IsEnabled(CustomComboPreset.MCH_ST_Adv_AirAnchor) && ReassembledAnchorST) &&
-            !MaxBattery && LevelChecked(AirAnchor) &&
-            GetCooldownRemainingTime(AirAnchor) <= GCD / 2)
-        {
-            actionID = AirAnchor;
-
-            return true;
-        }
-
-        if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) ||
-             IsEnabled(CustomComboPreset.MCH_ST_Adv_Drill) && ReassembledDrillST) &&
-            !JustUsed(Drill) &&
-            ActionReady(Drill) && GetCooldownRemainingTime(Wildfire) is >= 20 or <= 10)
-        {
-            actionID = Drill;
-
-            return true;
-        }
-
-        if ((IsEnabled(CustomComboPreset.MCH_ST_SimpleMode) ||
-             IsEnabled(CustomComboPreset.MCH_ST_Adv_AirAnchor)) &&
-            LevelChecked(HotShot) && !LevelChecked(AirAnchor) && !MaxBattery &&
-            GetCooldownRemainingTime(HotShot) <= GCD / 2)
-        {
-            actionID = HotShot;
-
-            return true;
-        }
-
-        return false;
-    }
+    #endregion
 
     #region Reassembled
 
-    internal static bool ReassembledExcavatorST =>
-        IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[0] && (HasStatusEffect(Buffs.Reassembled) || !HasStatusEffect(Buffs.Reassembled)) ||
-        IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && !MCH_ST_Reassembled[0] && !HasStatusEffect(Buffs.Reassembled) ||
+    private static bool ReassembledExcavatorST =>
+        IsEnabled(Preset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[0] && (HasStatusEffect(Buffs.Reassembled) || !HasStatusEffect(Buffs.Reassembled)) ||
+        IsEnabled(Preset.MCH_ST_Adv_Reassemble) && !MCH_ST_Reassembled[0] && !HasStatusEffect(Buffs.Reassembled) ||
         !HasStatusEffect(Buffs.Reassembled) && GetRemainingCharges(Reassemble) <= MCH_ST_ReassemblePool ||
-        !IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble);
+        !IsEnabled(Preset.MCH_ST_Adv_Reassemble);
 
-    internal static bool ReassembledChainsawST =>
-        IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[1] && (HasStatusEffect(Buffs.Reassembled) || !HasStatusEffect(Buffs.Reassembled)) ||
-        IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && !MCH_ST_Reassembled[1] && !HasStatusEffect(Buffs.Reassembled) ||
+    private static bool ReassembledChainsawST =>
+        IsEnabled(Preset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[1] && (HasStatusEffect(Buffs.Reassembled) || !HasStatusEffect(Buffs.Reassembled)) ||
+        IsEnabled(Preset.MCH_ST_Adv_Reassemble) && !MCH_ST_Reassembled[1] && !HasStatusEffect(Buffs.Reassembled) ||
         !HasStatusEffect(Buffs.Reassembled) && GetRemainingCharges(Reassemble) <= MCH_ST_ReassemblePool ||
-        !IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble);
+        !IsEnabled(Preset.MCH_ST_Adv_Reassemble);
 
-    internal static bool ReassembledAnchorST =>
-        IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[2] && (HasStatusEffect(Buffs.Reassembled) || !HasStatusEffect(Buffs.Reassembled)) ||
-        IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && !MCH_ST_Reassembled[2] && !HasStatusEffect(Buffs.Reassembled) ||
+    private static bool ReassembledAnchorST =>
+        IsEnabled(Preset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[2] && (HasStatusEffect(Buffs.Reassembled) || !HasStatusEffect(Buffs.Reassembled)) ||
+        IsEnabled(Preset.MCH_ST_Adv_Reassemble) && !MCH_ST_Reassembled[2] && !HasStatusEffect(Buffs.Reassembled) ||
         !HasStatusEffect(Buffs.Reassembled) && GetRemainingCharges(Reassemble) <= MCH_ST_ReassemblePool ||
-        !IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble);
+        !IsEnabled(Preset.MCH_ST_Adv_Reassemble);
 
-    internal static bool ReassembledDrillST =>
-        IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[3] && (HasStatusEffect(Buffs.Reassembled) || !HasStatusEffect(Buffs.Reassembled)) ||
-        IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && !MCH_ST_Reassembled[3] && !HasStatusEffect(Buffs.Reassembled) ||
+    private static bool ReassembledDrillST =>
+        IsEnabled(Preset.MCH_ST_Adv_Reassemble) && MCH_ST_Reassembled[3] && (HasStatusEffect(Buffs.Reassembled) || !HasStatusEffect(Buffs.Reassembled)) ||
+        IsEnabled(Preset.MCH_ST_Adv_Reassemble) && !MCH_ST_Reassembled[3] && !HasStatusEffect(Buffs.Reassembled) ||
         !HasStatusEffect(Buffs.Reassembled) && GetRemainingCharges(Reassemble) <= MCH_ST_ReassemblePool ||
-        !IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble);
+        !IsEnabled(Preset.MCH_ST_Adv_Reassemble);
+
+    private static bool ReassembledExcavatorAoE =>
+        IsEnabled(Preset.MCH_AoE_Adv_Reassemble) && MCH_AoE_Reassembled[3] && HasStatusEffect(Buffs.Reassembled) ||
+        IsEnabled(Preset.MCH_AoE_Adv_Reassemble) && !MCH_AoE_Reassembled[3] && !HasStatusEffect(Buffs.Reassembled) ||
+        !HasStatusEffect(Buffs.Reassembled) && GetRemainingCharges(Reassemble) <= MCH_AoE_ReassemblePool ||
+        !IsEnabled(Preset.MCH_AoE_Adv_Reassemble);
+
+    private static bool ReassembledChainsawAoE =>
+        IsEnabled(Preset.MCH_AoE_Adv_Reassemble) && MCH_AoE_Reassembled[2] && HasStatusEffect(Buffs.Reassembled) ||
+        IsEnabled(Preset.MCH_AoE_Adv_Reassemble) && !MCH_AoE_Reassembled[2] && !HasStatusEffect(Buffs.Reassembled) ||
+        !HasStatusEffect(Buffs.Reassembled) && GetRemainingCharges(Reassemble) <= MCH_AoE_ReassemblePool ||
+        !IsEnabled(Preset.MCH_AoE_Adv_Reassemble);
+
+    private static bool ReassembledAirAnchorAoE =>
+        IsEnabled(Preset.MCH_AoE_Adv_Reassemble) && MCH_AoE_Reassembled[1] && HasStatusEffect(Buffs.Reassembled) ||
+        IsEnabled(Preset.MCH_AoE_Adv_Reassemble) && !MCH_AoE_Reassembled[1] && !HasStatusEffect(Buffs.Reassembled) ||
+        !HasStatusEffect(Buffs.Reassembled) && GetRemainingCharges(Reassemble) <= MCH_AoE_ReassemblePool ||
+        !IsEnabled(Preset.MCH_AoE_Adv_Reassemble);
+
+    private static bool ReassembledScattergunAoE =>
+        IsEnabled(Preset.MCH_AoE_Adv_Reassemble) && MCH_AoE_Reassembled[0] && HasStatusEffect(Buffs.Reassembled);
+
+    private static bool CanReassemble(bool onExcavator, bool onChainsaw, bool onAirAnchor, bool onDrill)
+    {
+        if (!JustUsed(OriginalHook(Heatblast)) &&
+            !HasStatusEffect(Buffs.Reassembled) && ActionReady(Reassemble))
+        {
+            switch (onExcavator)
+            {
+                case true when
+                    (IsNotEnabled(Preset.MCH_ST_Adv_TurretQueen) || MCH_ST_QueenBossOption == 1 && !InBossEncounter()) &&
+                    LevelChecked(Excavator) && HasStatusEffect(Buffs.ExcavatorReady):
+
+                case true when
+                    IsEnabled(Preset.MCH_ST_Adv_TurretQueen) &&
+                    IsEnabled(Preset.MCH_ST_Adv_TurretQueen) && (MCH_ST_QueenBossOption == 0 || InBossEncounter()) &&
+                    LevelChecked(Excavator) && HasStatusEffect(Buffs.ExcavatorReady) &&
+                    (BSUsed is 1 ||
+                     BSUsed % 3 is 2 && Battery <= 40 ||
+                     BSUsed % 3 is 0 && Battery <= 50 ||
+                     BSUsed % 3 is 1 && Battery <= 60 ||
+                     GetStatusEffectRemainingTime(Buffs.ExcavatorReady) <= 6):
+                    return true;
+            }
+
+            switch (onChainsaw)
+            {
+                case true when
+                    !LevelChecked(Excavator) && !MaxBattery &&
+                    LevelChecked(Chainsaw) && GetCooldownRemainingTime(Chainsaw) < GCD:
+                    return true;
+            }
+
+            switch (onAirAnchor)
+            {
+                case true when
+                    !MaxBattery && LevelChecked(AirAnchor) &&
+                    GetCooldownRemainingTime(AirAnchor) < GCD &&
+                    (!LevelChecked(Chainsaw) ||
+                     LevelChecked(Chainsaw) && MCH_ST_Reassembled[1] && GetCooldownRemainingTime(Chainsaw) > 40 ||
+                     LevelChecked(Excavator) && MCH_ST_Reassembled[0] && GetCooldownRemainingTime(Chainsaw) > 40):
+                    return true;
+            }
+
+            switch (onDrill)
+            {
+                case true when
+                    LevelChecked(Drill) &&
+                    (!LevelChecked(AirAnchor) && MCH_ST_Reassembled[2] || !MCH_ST_Reassembled[2]) && ActionReady(Drill):
+                    return true;
+            }
+        }
+
+        return false;
+    }
 
     #endregion
 
     #region Cooldowns
 
-    internal static bool DrillCD =>
+    private static bool DrillCD =>
         !LevelChecked(Drill) ||
         !TraitLevelChecked(Traits.EnhancedMultiWeapon) && GetCooldownRemainingTime(Drill) >= 9 ||
         TraitLevelChecked(Traits.EnhancedMultiWeapon) && GetRemainingCharges(Drill) < GetMaxCharges(Drill) && GetCooldownRemainingTime(Drill) >= 9;
 
-    internal static bool AnchorCD =>
+    private static bool AnchorCD =>
         !LevelChecked(AirAnchor) ||
         LevelChecked(AirAnchor) && GetCooldownRemainingTime(AirAnchor) >= 9;
 
-    internal static bool SawCD =>
+    private static bool SawCD =>
         !LevelChecked(Chainsaw) ||
         LevelChecked(Chainsaw) && GetCooldownRemainingTime(Chainsaw) >= 9;
+
+    private static bool CanUseTools(ref uint actionID, bool useExcavator, bool useChainsaw, bool useAirAnchor, bool useDrill, bool simpleMode = false)
+    {
+        switch (useExcavator)
+        {
+            case true when
+                ReassembledExcavatorST &&
+                (IsNotEnabled(Preset.MCH_ST_Adv_TurretQueen) || (MCH_ST_QueenBossOption == 1 || simpleMode) && !InBossEncounter()) &&
+                LevelChecked(Excavator) && HasStatusEffect(Buffs.ExcavatorReady):
+
+            case true when
+                ReassembledExcavatorST &&
+                (IsEnabled(Preset.MCH_ST_Adv_TurretQueen) && (MCH_ST_QueenBossOption == 0 || InBossEncounter()) ||
+                 simpleMode && InBossEncounter()) &&
+                LevelChecked(Excavator) && HasStatusEffect(Buffs.ExcavatorReady) &&
+                (BSUsed is 1 ||
+                 BSUsed % 3 is 2 && Battery <= 40 ||
+                 BSUsed % 3 is 0 && Battery <= 50 ||
+                 BSUsed % 3 is 1 && Battery <= 60 ||
+                 GetStatusEffectRemainingTime(Buffs.ExcavatorReady) <= 6):
+                actionID = Excavator;
+                return true;
+        }
+
+        if (useChainsaw &&
+            ReassembledChainsawST &&
+            !MaxBattery && !HasStatusEffect(Buffs.ExcavatorReady) && LevelChecked(Chainsaw) &&
+            GetCooldownRemainingTime(Chainsaw) <= GCD / 2)
+        {
+            actionID = Chainsaw;
+            return true;
+        }
+
+        if (useAirAnchor &&
+            ReassembledAnchorST &&
+            !MaxBattery && LevelChecked(AirAnchor) &&
+            GetCooldownRemainingTime(AirAnchor) <= GCD / 2)
+        {
+            actionID = AirAnchor;
+            return true;
+        }
+
+        if (useDrill &&
+            ReassembledDrillST &&
+            !JustUsed(Drill) && ActionReady(Drill) &&
+            GetCooldownRemainingTime(Wildfire) is >= 20 or <= 10)
+        {
+            actionID = Drill;
+            return true;
+        }
+
+        if (useAirAnchor &&
+            LevelChecked(HotShot) && !LevelChecked(AirAnchor) && !MaxBattery &&
+            GetCooldownRemainingTime(HotShot) <= GCD / 2)
+        {
+            actionID = HotShot;
+            return true;
+        }
+        return false;
+    }
 
     #endregion
 
     #region Combos
 
-    internal static float GCD => GetCooldown(OriginalHook(SplitShot)).CooldownTotal;
+    private static float GCD => GetCooldown(OriginalHook(SplitShot)).CooldownTotal;
 
-    internal static unsafe bool IsComboExpiring(float times)
+    private static unsafe bool IsComboExpiring(float times)
     {
         float gcd = GCD * times;
 
@@ -255,17 +322,21 @@ internal partial class MCH
         if (Lvl90EarlyTools.LevelChecked)
             return Lvl90EarlyTools;
 
-        if (Lvl100Standard.LevelChecked)
-            return Lvl100Standard;
+        if (StandardOpener.LevelChecked)
+            return StandardOpener;
 
         return WrathOpener.Dummy;
     }
 
-    internal class MCHOpenerMaxLevel : WrathOpener
+    internal static MCHStandardOpener StandardOpener = new();
+    internal static MCHLvl90EarlyToolsOpener Lvl90EarlyTools = new();
+
+    internal class MCHStandardOpener : WrathOpener
     {
         public override int MinOpenerLevel => 100;
 
         public override int MaxOpenerLevel => 109;
+
         public override List<uint> OpenerActions { get; set; } =
         [
             Reassemble,
@@ -282,8 +353,8 @@ internal partial class MCH
             CheckMate,
             Wildfire,
             FullMetalField,
-            DoubleCheck,
             Hypercharge,
+            DoubleCheck,
             BlazingShot,
             CheckMate,
             BlazingShot,
@@ -321,11 +392,12 @@ internal partial class MCH
             IsOffCooldown(FullMetalField);
     }
 
-    internal class MCHOpenerLvl90EarlyTools : WrathOpener
+    internal class MCHLvl90EarlyToolsOpener : WrathOpener
     {
         public override int MinOpenerLevel => 90;
 
-        public override int MaxOpenerLevel => 99;
+        public override int MaxOpenerLevel => 90;
+
         public override List<uint> OpenerActions { get; set; } =
         [
             Reassemble,
@@ -370,14 +442,6 @@ internal partial class MCH
             14
         ];
 
-        public override List<int> AllowUpgradeSteps { get; set; } =
-        [
-            3, 4,
-            8, 9,
-            11, 12,
-            19, 21, 23, 25
-        ];
-
         public override bool HasCooldowns() =>
             GetRemainingCharges(Reassemble) is 2 &&
             GetRemainingCharges(OriginalHook(GaussRound)) is 3 &&
@@ -391,25 +455,23 @@ internal partial class MCH
 
     #region Gauge
 
-    internal static MCHGauge Gauge = GetJobGauge<MCHGauge>();
+    private static MCHGauge Gauge = GetJobGauge<MCHGauge>();
 
-    internal static bool IsOverheated => Gauge.IsOverheated;
+    private static bool IsOverheated => Gauge.IsOverheated;
 
-    internal static bool RobotActive => Gauge.IsRobotActive;
+    private static bool RobotActive => Gauge.IsRobotActive;
 
-    internal static byte LastSummonBattery => Gauge.LastSummonBatteryPower;
+    private static byte LastSummonBattery => Gauge.LastSummonBatteryPower;
 
-    internal static byte Heat => Gauge.Heat;
+    private static byte Heat => Gauge.Heat;
 
-    internal static byte Battery => Gauge.Battery;
+    private static byte Battery => Gauge.Battery;
 
-    internal static bool MaxBattery => Battery >= 100;
+    private static bool MaxBattery => Battery >= 100;
 
     #endregion
 
     #region ID's
-
-    public const byte JobID = 31;
 
     public const uint
         CleanShot = 2873,
@@ -474,4 +536,5 @@ internal partial class MCH
     }
 
     #endregion
+
 }

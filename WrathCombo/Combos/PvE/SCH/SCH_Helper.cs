@@ -1,34 +1,81 @@
-﻿using Dalamud.Game.ClientState.JobGauge.Types;
+﻿#region Dependencies
+using Dalamud.Game.ClientState.JobGauge.Types;
 using Dalamud.Game.ClientState.Objects.Types;
 using ECommons.DalamudServices;
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
+using ECommons.GameFunctions;
 using WrathCombo.CustomComboNS;
 using WrathCombo.CustomComboNS.Functions;
+using WrathCombo.Extensions;
+using static WrathCombo.Combos.PvE.SCH.Config;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
-namespace WrathCombo.Combos.PvE;
 
+#endregion
+
+namespace WrathCombo.Combos.PvE;
 internal partial class SCH
 {
+    #region Lists
+    internal static readonly FrozenDictionary<uint, ushort> BioList = new Dictionary<uint, ushort>
+    {
+        { Bio, Debuffs.Bio1 },
+        { Bio2, Debuffs.Bio2},
+        { Biolysis, Debuffs.Biolysis},
+    }.ToFrozenDictionary();
+
     internal static readonly List<uint>
         BroilList = [Ruin, Broil, Broil2, Broil3, Broil4],
         AetherflowList = [EnergyDrain, Lustrate, SacredSoil, Indomitability, Excogitation],
-        FairyList = [WhisperingDawn, FeyBlessing, FeyIllumination, Dissipation, Aetherpact, SummonSeraph];
-    internal static readonly Dictionary<uint, ushort>
-        BioList = new()
-        {
-            { Bio, Debuffs.Bio1 },
-            { Bio2, Debuffs.Bio2 },
-            { Biolysis, Debuffs.Biolysis }
-        };
-    internal static SCHOpenerMaxLevel1 Opener1 = new();
-
-    // Class Gauge
+        ReplacedActionsList = [Ruin, Broil, Broil2, Broil3, Broil4, Bio, Biolysis, Bio2, Ruin2, Succor, Concitation, Accession, Physick, ArtOfWar, ArtOfWarII], //Used for Hidden Features Retarget Sacred Soil
+        FairyList = [WhisperingDawn, FeyBlessing, FeyIllumination, Dissipation, Aetherpact, SummonSeraph, Seraphism];
+    #endregion
     internal static SCHGauge Gauge => GetJobGauge<SCHGauge>();
+    internal static IBattleChara? AetherPactTarget => Svc.Objects.Where(x => x is IBattleChara chara && chara.StatusList.Any(y => y.StatusId == 1223 && y.SourceObject.GameObjectId == Svc.Buddies.PetBuddy.GameObject.GameObjectId)).Cast<IBattleChara>().FirstOrDefault();
+    internal static bool HasAetherflow => Gauge.Aetherflow > 0;
+    internal static bool FairyDismissed => Gauge.DismissedFairy > 0;
+    internal static bool FairyBusy => JustUsed(WhisperingDawn, 2f) || JustUsed(FeyIllumination, 2f) || JustUsed(FeyBlessing, 2f) || 
+                                      JustUsed(Aetherpact, 2f) || JustUsed(Dissipation, 2f) || JustUsed(Consolation, 2f) || JustUsed(SummonSeraph, 2f);
+    internal static bool EndAetherpact => OriginalHook(Aetherpact) is DissolveUnion &&  //Quick check to see if Fairy Aetherpact is Active
+                                          AetherPactTarget is not null && //Null checking so GetTargetHPPercent doesn't fall back to CurrentTarget
+                                          (IsEnabled(Preset.SCH_ST_Heal_Aetherpact) && IsEnabled(Preset.SCH_ST_Heal) && GetTargetHPPercent(AetherPactTarget) >= SCH_ST_Heal_AetherpactDissolveOption ||
+                                           IsEnabled(Preset.SCH_Simple_ST_Heal) && GetTargetHPPercent(AetherPactTarget) >= 95) ;
+                                            
+                                            
+    internal static bool ShieldCheck => GetPartyBuffPercent(Buffs.Galvanize) <= SCH_AoE_Heal_SuccorShieldOption &&
+                                        GetPartyBuffPercent(SGE.Buffs.EukrasianPrognosis) <= SCH_AoE_Heal_SuccorShieldOption;
+    internal static bool CanChainStrategem => ActionReady(ChainStratagem) &&
+                                              CanApplyStatus(CurrentTarget, Debuffs.ChainStratagem) &&
+                                              !HasStatusEffect(Debuffs.ChainStratagem, CurrentTarget, true);
 
-    public static bool FairyDismissed => Gauge.DismissedFairy > 0;
-
+    internal static float AetherflowCD => GetCooldownRemainingTime(Aetherflow);
+    
+    internal static float ChainStrategemCD => GetCooldownRemainingTime(ChainStratagem);
+    
+    #region Raidwides
+    
+    internal static bool RaidwideSacredSoil()
+    {
+        return IsEnabled(Preset.SCH_Raidwide_SacredSoil) && ActionReady(SacredSoil) && CanWeave() && RaidWideCasting();
+    }
+    internal static bool RaidwideExpedient()
+    {
+        return IsEnabled(Preset.SCH_Raidwide_Expedient) && ActionReady(Expedient) && CanWeave() && RaidWideCasting();
+    }
+    internal static bool RaidwideSuccor()
+    {
+        return IsEnabled(Preset.SCH_Raidwide_Succor) && ActionReady(OriginalHook(Succor)) && ShieldCheck && RaidWideCasting();
+    }
+    internal static bool RaidwideRecitation()
+    {
+        return SCH_Raidwide_Succor_Recitation&& ActionReady(Recitation);
+    }
+    #endregion
+    
+    #region Eos Summoner
+    public static bool NeedToSummon => DateTime.Now > SummonTime && !HasPetPresent() && !FairyDismissed;
     private static DateTime SummonTime
     {
         get
@@ -39,84 +86,172 @@ internal partial class SCH
             return field;
         }
     }
-
-    public static bool NeedToSummon => DateTime.Now > SummonTime && !HasPetPresent() && !FairyDismissed;
-
-    public static IBattleChara? AetherPactTarget => Svc.Objects.Where(x => x is IBattleChara chara && chara.StatusList.Any(y => y.StatusId == 1223 && y.SourceObject.GameObjectId == Svc.Buddies.PetBuddy.ObjectId)).Cast<IBattleChara>().FirstOrDefault();
-
-    internal static bool HasAetherflow() => Gauge.Aetherflow > 0;
-    internal static WrathOpener Opener()
+    
+    #endregion
+    
+    #region Dot Checker
+    internal static bool NeedsDoT()
     {
-        if (Opener1.LevelChecked)
-            return Opener1;
+        var dotAction = OriginalHook(Bio);
+        var hpThreshold = IsNotEnabled(Preset.SCH_ST_Simple_DPS) &&
+            (SCH_DPS_BioSubOption == 1 || !InBossEncounter())? SCH_DPS_BioOption : 0;
+        BioList.TryGetValue(dotAction, out var dotDebuffID);
+        var dotRefresh = IsNotEnabled(Preset.SCH_ST_Simple_DPS) ? SCH_DPS_BioUptime_Threshold : 2.5;
+        var dotRemaining = GetStatusEffectRemainingTime(dotDebuffID, CurrentTarget);
 
-        return WrathOpener.Dummy;
+        return ActionReady(dotAction) &&
+               CanApplyStatus(CurrentTarget, dotDebuffID) &&
+               !JustUsedOn(dotAction, CurrentTarget, 5f) &&
+               HasBattleTarget() &&
+               GetTargetHPPercent() > hpThreshold &&
+               dotRemaining <= dotRefresh;
     }
-
-    public static int GetMatchingConfigST(int i, out uint action, out bool enabled)
+    #endregion
+    
+    #region Get ST Heals
+    internal static int GetMatchingConfigST(int i, IGameObject? OptionalTarget, out uint action, out bool enabled)
     {
+        IGameObject? healTarget = OptionalTarget ?? SimpleTarget.Stack.AllyToHeal;
+        bool tankCheck = healTarget.IsInParty() && healTarget.GetRole() is CombatRole.Tank;
+        bool ShieldCheck = !SCH_ST_Heal_AldoquimOpts[0] || 
+                           !HasStatusEffect(Buffs.Galvanize, healTarget, true) || 
+                           HasStatusEffect(Buffs.EmergencyTactics);
+        bool SageShieldCheck = !SCH_ST_Heal_AldoquimOpts[1] ||
+                               !HasStatusEffect(SGE.Buffs.EukrasianDiagnosis, healTarget, true) || 
+                               !HasStatusEffect(SGE.Buffs.EukrasianPrognosis, healTarget, true) ||
+                               HasStatusEffect(Buffs.EmergencyTactics);
+        bool EmergencyAdlo = SCH_ST_Heal_AldoquimOpts[2] && ActionReady(EmergencyTactics) &&
+                             GetTargetHPPercent(healTarget, SCH_ST_Heal_IncludeShields) <=
+                             SCH_ST_Heal_AdloquiumOption_Emergency;
+        
         switch (i)
         {
             case 0:
                 action = Lustrate;
-                enabled = IsEnabled(CustomComboPreset.SCH_ST_Heal_Lustrate) && HasAetherflow();
-                return Config.SCH_ST_Heal_LustrateOption;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_Lustrate) && HasAetherflow;
+                return SCH_ST_Heal_LustrateOption;
             case 1:
                 action = Excogitation;
-                enabled = IsEnabled(CustomComboPreset.SCH_ST_Heal_Excogitation) && (HasAetherflow() || HasStatusEffect(Buffs.Recitation));
-                return Config.SCH_ST_Heal_ExcogitationOption;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_Excogitation) && 
+                          (HasAetherflow || HasStatusEffect(Buffs.Recitation)) &&
+                          (tankCheck || !IsInParty() || !SCH_ST_Heal_ExcogitationTankOption) &&
+                          (!SCH_ST_Heal_ExcogitationBossOption || !InBossEncounter());;
+                return SCH_ST_Heal_ExcogitationOption;
             case 2:
                 action = Protraction;
-                enabled = IsEnabled(CustomComboPreset.SCH_ST_Heal_Protraction);
-                return Config.SCH_ST_Heal_ProtractionOption;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_Protraction) &&
+                          (tankCheck || !IsInParty() || !SCH_ST_Heal_ProtractionTankOption) &&
+                          (!SCH_ST_Heal_ProtractionBossOption || !InBossEncounter());
+                return SCH_ST_Heal_ProtractionOption;
             case 3:
                 action = Aetherpact;
-                enabled = IsEnabled(CustomComboPreset.SCH_ST_Heal_Aetherpact) && Gauge.FairyGauge >= Config.SCH_ST_Heal_AetherpactFairyGauge && IsOriginal(Aetherpact);
-                return Config.SCH_ST_Heal_AetherpactOption;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_Aetherpact) && Gauge.FairyGauge >= SCH_ST_Heal_AetherpactFairyGauge && IsOriginal(Aetherpact) && !FairyBusy;
+                return SCH_ST_Heal_AetherpactOption;
+            case 4:
+                action = OriginalHook(Adloquium);
+                enabled = IsEnabled(Preset.SCH_ST_Heal_Adloquium) &&
+                          ActionReady(OriginalHook(Adloquium)) &&
+                          GetTargetHPPercent(healTarget, SCH_ST_Heal_IncludeShields) <= SCH_ST_Heal_AdloquiumOption &&
+                          (EmergencyAdlo || ShieldCheck && SageShieldCheck);
+                return SCH_ST_Heal_AdloquiumOption;
+            case 5:
+                action = OriginalHook(WhisperingDawn);
+                enabled = IsEnabled(Preset.SCH_ST_Heal_WhisperingDawn) && HasPetPresent() && !FairyBusy &&
+                          (!SCH_ST_Heal_WhisperingDawnBossOption || !InBossEncounter());
+                return SCH_ST_Heal_WhisperingDawnOption;
+            case 6:
+                action = OriginalHook(FeyIllumination);
+                enabled = IsEnabled(Preset.SCH_ST_Heal_FeyIllumination) && HasPetPresent() && !FairyBusy &&
+                          (!SCH_ST_Heal_FeyIlluminationBossOption || !InBossEncounter());
+                return SCH_ST_Heal_FeyIlluminationOption;
+            case 7:
+                action = FeyBlessing;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_FeyBlessing) && HasPetPresent() && !FairyBusy &&
+                          (!SCH_ST_Heal_FeyBlessingBossOption || !InBossEncounter());
+                return SCH_ST_Heal_FeyBlessingOption;
+            case 8:
+                action = Seraphism;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_Seraphism) && HasPetPresent() && !FairyBusy &&
+                          (!SCH_ST_Heal_SeraphismBossOption || !InBossEncounter());
+                return SCH_ST_Heal_SeraphismOption;
+            case 9:
+                action = Expedient;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_Expedient) &&
+                          (!SCH_ST_Heal_ExpedientBossOption || !InBossEncounter());
+                return SCH_ST_Heal_ExpedientOption;
+            case 10:
+                action = SummonSeraph;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_SummonSeraph) && HasPetPresent() && !FairyBusy &&
+                          (!SCH_ST_Heal_SummonSeraphBossOption || !InBossEncounter());
+                return SCH_ST_Heal_SummonSeraphOption;
+            case 11:
+                action = Consolation;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_Consolation) && Gauge.SeraphTimer > 0 && !FairyBusy &&
+                          (!SCH_ST_Heal_ConsolationBossOption || !InBossEncounter());
+                return SCH_ST_Heal_ConsolationOption;
         }
 
         enabled = false;
         action = 0;
         return 0;
     }
-
+    #endregion
+    
+    #region Get Aoe Heals
     public static int GetMatchingConfigAoE(int i, out uint action, out bool enabled)
     {
         switch (i)
         {
             case 0:
                 action = OriginalHook(WhisperingDawn);
-                enabled = IsEnabled(CustomComboPreset.SCH_AoE_Heal_WhisperingDawn) && HasPetPresent();
-                return Config.SCH_AoE_Heal_WhisperingDawnOption;
+                enabled = IsEnabled(Preset.SCH_AoE_Heal_WhisperingDawn) && HasPetPresent() && !FairyBusy;
+                return SCH_AoE_Heal_WhisperingDawnOption;
             case 1:
                 action = OriginalHook(FeyIllumination);
-                enabled = IsEnabled(CustomComboPreset.SCH_AoE_Heal_FeyIllumination) && HasPetPresent();
-                return Config.SCH_AoE_Heal_FeyIlluminationOption;
+                enabled = IsEnabled(Preset.SCH_AoE_Heal_FeyIllumination) && HasPetPresent() && !FairyBusy;
+                return SCH_AoE_Heal_FeyIlluminationOption;
             case 2:
                 action = FeyBlessing;
-                enabled = IsEnabled(CustomComboPreset.SCH_AoE_Heal_FeyBlessing) && HasPetPresent();
-                return Config.SCH_AoE_Heal_FeyBlessingOption;
+                enabled = IsEnabled(Preset.SCH_AoE_Heal_FeyBlessing) && HasPetPresent() && !FairyBusy;
+                return SCH_AoE_Heal_FeyBlessingOption;
             case 3:
                 action = Consolation;
-                enabled = IsEnabled(CustomComboPreset.SCH_AoE_Heal_Consolation) && Gauge.SeraphTimer > 0;
-                return Config.SCH_AoE_Heal_ConsolationOption;
+                enabled = IsEnabled(Preset.SCH_AoE_Heal_Consolation) && Gauge.SeraphTimer > 0 && !FairyBusy;
+                return SCH_AoE_Heal_ConsolationOption;
             case 4:
                 action = Seraphism;
-                enabled = IsEnabled(CustomComboPreset.SCH_AoE_Heal_Seraphism) && HasPetPresent();
-                return Config.SCH_AoE_Heal_SeraphismOption;
+                enabled = IsEnabled(Preset.SCH_AoE_Heal_Seraphism) && HasPetPresent();
+                return SCH_AoE_Heal_SeraphismOption;
             case 5:
                 action = Indomitability;
-                enabled = IsEnabled(CustomComboPreset.SCH_AoE_Heal_Indomitability) && HasAetherflow();
-                return Config.SCH_AoE_Heal_IndomitabilityOption;
+                enabled = IsEnabled(Preset.SCH_AoE_Heal_Indomitability) && HasAetherflow;
+                return SCH_AoE_Heal_IndomitabilityOption;
             case 6:
+                action = SummonSeraph;
+                enabled = IsEnabled(Preset.SCH_AoE_Heal_SummonSeraph) && HasPetPresent() && !FairyBusy;
+                return SCH_AoE_Heal_SummonSeraph;
+            
+            case 7:
                 action = OriginalHook(Succor);
-                enabled = IsEnabled(CustomComboPreset.SCH_AoE_Heal) && GetPartyBuffPercent(Buffs.Galvanize) <= Config.SCH_AoE_Heal_SuccorShieldOption;
+                enabled = IsEnabled(Preset.SCH_AoE_Heal) && ShieldCheck && LevelChecked(Succor);
                 return 100; //Don't HP Check
         }
 
         enabled = false;
         action = 0;
         return 0;
+    }
+    #endregion
+    
+    #region Openers
+    
+    internal static SCHOpenerMaxLevel1 Opener1 = new();
+    internal static WrathOpener Opener()
+    {
+        if (Opener1.LevelChecked)
+            return Opener1;
+
+        return WrathOpener.Dummy;
     }
 
     internal class SCHOpenerMaxLevel1 : WrathOpener
@@ -149,14 +284,14 @@ internal partial class SCH
 
         public override List<(int[] Steps, uint NewAction, Func<bool> Condition)> SubstitutionSteps { get; set; } =
         [
-            ([3], Aetherflow, () => Config.SCH_ST_DPS_OpenerOption == 1),
-            ([13], Dissipation, () => Config.SCH_ST_DPS_OpenerOption == 1)
+            ([3], Aetherflow, () => SCH_ST_DPS_OpenerOption == 1),
+            ([13], Dissipation, () => SCH_ST_DPS_OpenerOption == 1)
         ];
 
         public override int MinOpenerLevel => 100;
         public override int MaxOpenerLevel => 109;
 
-        internal override UserData ContentCheckConfig => Config.SCH_ST_DPS_OpenerContent;
+        internal override UserData ContentCheckConfig => SCH_ST_DPS_OpenerContent;
 
         public override bool HasCooldowns()
         {
@@ -171,11 +306,10 @@ internal partial class SCH
             return true;
         }
     }
+    
+    #endregion
 
     #region ID's
-
-    public const byte ClassID = 26;
-    public const byte JobID = 28;
 
     internal const uint
 
@@ -192,6 +326,8 @@ internal partial class SCH
         Resurrection = 173,
         Protraction = 25867,
         Seraphism = 37014,
+        Manifestation = 37015,
+        Accession = 37016,
 
         // Offense
         Bio = 17864,
@@ -223,6 +359,7 @@ internal partial class SCH
         Recitation = 16542,
         ChainStratagem = 7436,
         DeploymentTactics = 3585,
+        Expedient = 25868,
         EmergencyTactics = 3586;
 
     //Action Groups
@@ -234,7 +371,11 @@ internal partial class SCH
             Galvanize = 297,
             SacredSoil = 299,
             Dissipation = 791,
+            EmergencyTactics = 792,
+            Excogitation =1220,
             Recitation = 1896,
+            SeraphicVeil = 1917,
+            Catalyze = 1918,
             ImpactImminent = 3882;
     }
 

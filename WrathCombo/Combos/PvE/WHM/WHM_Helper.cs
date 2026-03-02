@@ -1,4 +1,6 @@
 ﻿#region
+
+using System;
 using Dalamud.Game.ClientState.JobGauge.Types;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.ClientState.Statuses;
@@ -31,13 +33,9 @@ internal partial class WHM
     internal static bool NeedsDoT()
     {
         var dotAction = OriginalHook(Aero);
-        var hpThreshold = IsNotEnabled(Preset.WHM_ST_Simple_DPS)
-            ? computeHpThreshold()
-            : 0;
+        var hpThreshold = IsNotEnabled(Preset.WHM_ST_Simple_DPS) ? ComputeHpThreshold(CurrentTarget) : 0;
         AeroList.TryGetValue(dotAction, out var dotDebuffID);
-        var dotRefresh = IsNotEnabled(Preset.WHM_ST_Simple_DPS)
-            ? WHM_ST_MainCombo_DoT_Threshold
-            : 2.5;
+        var dotRefresh = IsNotEnabled(Preset.WHM_ST_Simple_DPS) ? WHM_ST_DPS_AeroUptime_Threshold : 2.5;
         var dotRemaining = GetStatusEffectRemainingTime(dotDebuffID, CurrentTarget);
 
         return ActionReady(dotAction) &&
@@ -48,38 +46,31 @@ internal partial class WHM
                dotRemaining <= dotRefresh;
     }
 
-    internal static int computeHpThreshold()
+    internal static int ComputeHpThreshold(IGameObject? x)
     {
-        if (TargetIsBoss() && InBossEncounter())
+        if (x is null)
+            return 0;
+        
+        if (InBossEncounter())
         {
-            return WHM_ST_DPS_AeroOptionBoss;
+            return x.IsBoss() ? WHM_ST_DPS_AeroBossOption : WHM_ST_DPS_AeroBossAddsOption;
         }
-
-        switch ((int)WHM_ST_DPS_AeroOptionSubOption)
-        {
-            case (int)EnemyRestriction.AllEnemies:
-                return WHM_ST_DPS_AeroOptionNonBoss;
-            case (int)EnemyRestriction.OnlyBosses:
-                return InBossEncounter() ? WHM_ST_DPS_AeroOptionNonBoss : 0;
-            default:
-            case (int)EnemyRestriction.NonBosses:
-                return !InBossEncounter() ? WHM_ST_DPS_AeroOptionNonBoss : 0;
-        }
+        return WHM_ST_DPS_AeroTrashOption;
     }
 
     #region Get ST Heals
 
-    internal static int GetMatchingConfigST(int i, IGameObject? OptionalTarget,
+    internal static int GetMatchingConfigST(int i, IGameObject? target,
         out uint action, out bool enabled)
     {
-        IGameObject? healTarget = OptionalTarget ?? SimpleTarget.Stack.AllyToHeal;
+        IGameObject? healTarget = target ?? SimpleTarget.Stack.AllyToHeal;
         bool stopHot = WHM_STHeals_RegenHPLower >=
                        GetTargetHPPercent(healTarget,
                            WHM_STHeals_IncludeShields);
         float refreshTime = WHM_STHeals_RegenTimer;
-        bool tankCheck = healTarget.IsInParty() && healTarget.GetRole() is CombatRole.Tank;
-        Status? regenHoT = GetStatusEffect(Buffs.Regen, healTarget);
-        Status? BenisonShield = GetStatusEffect(Buffs.DivineBenison, healTarget);
+        bool tankCheck = healTarget.IsInParty() && healTarget.Role is CombatRole.Tank;
+        IStatus? regenHoT = GetStatusEffect(Buffs.Regen, healTarget);
+        IStatus? BenisonShield = GetStatusEffect(Buffs.DivineBenison, healTarget);
 
         switch (i)
         {
@@ -177,6 +168,7 @@ internal partial class WHM
             case 0:
                 action = OriginalHook(Medica2);
                 enabled = IsEnabled(Preset.WHM_AoEHeals_Medica2) &&
+                          !IsMoving() && !JustUsed(OriginalHook(Medica2)) &&
                           (LevelChecked(Medica3) && medica3Check ||
                            !LevelChecked(Medica3) && medica2Check);
                 return WHM_AoEHeals_Medica2HP;
@@ -184,8 +176,8 @@ internal partial class WHM
             case 1:
                 action = Cure3;
                 enabled = IsEnabled(Preset.WHM_AoEHeals_Cure3) &&
-                          NumberOfAlliesInRange(Cure3, OptionalTarget)
-                          >= WHM_AoEHeals_Cure3Allies &&
+                          !IsMoving() &&
+                          NumberOfAlliesInRange(Cure3, OptionalTarget) >= WHM_AoEHeals_Cure3Allies &&
                           (LocalPlayer.CurrentMp >= WHM_AoEHeals_Cure3MP ||
                            HasStatusEffect(Buffs.ThinAir));
                 return WHM_AoEHeals_Cure3HP;
@@ -259,14 +251,14 @@ internal partial class WHM
     {
         return IsEnabled(Preset.WHM_Raidwide_Asylum) &&
                ActionReady(Asylum) &&
-               CanWeave() && RaidWideCasting();
+               CanWeave() && GroupDamageIncoming();
     }
 
     internal static bool RaidwideTemperance()
     {
         return IsEnabled(Preset.WHM_Raidwide_Temperance) &&
                ActionReady(OriginalHook(Temperance)) &&
-               CanWeave() && RaidWideCasting();
+               CanWeave() && GroupDamageIncoming();
     }
 
     internal static bool RaidwideLiturgyOfTheBell()
@@ -274,8 +266,15 @@ internal partial class WHM
         return IsEnabled(Preset.WHM_Raidwide_LiturgyOfTheBell) &&
                ActionReady(LiturgyOfTheBell) &&
                !HasStatusEffect(Buffs.LiturgyOfTheBell) &&
-               RaidWideCasting() && CanWeave();
+               GroupDamageIncoming() && CanWeave();
     }
+    internal static bool RaidwidePlenaryIndulgence()
+    {
+        return IsEnabled(Preset.WHM_Raidwide_PlenaryIndulgence) &&
+               ActionReady(PlenaryIndulgence) &&
+               GroupDamageIncoming() && CanWeave();
+    }
+
 
     #endregion
 
@@ -326,21 +325,23 @@ internal partial class WHM
             Dia,
             Glare3,
             Glare3,
-            PresenceOfMind,
+            PresenceOfMind, //5
             Glare4,
+            AfflatusMisery,
             Assize,
             Glare4,
-            Glare4,
+            Glare4, //10
             Glare3,
             Glare3,
             Glare3,
             Glare3,
-            Glare3,
-            Glare3,
-            Dia,
+            Glare3, //15
+            Dia
         ];
 
         internal override UserData ContentCheckConfig => WHM_Balance_Content;
+        public override Preset Preset => Preset.WHM_ST_MainCombo_Opener;
+        public override List<(int[] Steps, Func<bool> Condition)> SkipSteps { get; set; } = [([7], () => !BloodLilyReady)];
 
         public override bool HasCooldowns()
         {

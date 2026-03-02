@@ -5,7 +5,8 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
-using Status = Dalamud.Game.ClientState.Statuses.Status; // conflicts with structs if not defined
+using WrathCombo.Extensions;
+using Status = Dalamud.Game.ClientState.Statuses.IStatus; // conflicts with structs if not defined
 namespace WrathCombo.Data;
 
 internal partial class CustomComboCache : IDisposable
@@ -33,7 +34,11 @@ internal partial class CustomComboCache : IDisposable
         if (obj is not IBattleChara chara)
             return statusCache[key] = null;
 
-        var statuses = chara.StatusList;
+        var statuses = chara.SafeStatusList;
+
+        if (statuses is null)
+            return statusCache[key] = null;
+
         foreach (var status in statuses)
         {
             if (status.StatusId == InvalidStatusID)
@@ -72,6 +77,14 @@ internal class StatusCache
             : [];
 
     public static bool HasDamageDown(IGameObject? target) => HasStatusInCacheList(DamageDownStatuses, target);
+
+    private static readonly FrozenSet<uint> CleansableDoomStatuses =
+        StatusSheet
+        .Where(x => x.Value.Icon == 215503 && x.Value.CanDispel)
+        .Select(x => x.Key)
+        .ToFrozenSet();
+
+    public static bool HasCleansableDoom(IGameObject? target) => HasStatusInCacheList(CleansableDoomStatuses, target);
 
     private static readonly FrozenSet<uint> DamageUpStatuses =
         ENStatusSheet.TryGetValue(61, out var refRow)
@@ -195,7 +208,11 @@ internal class StatusCache
         if (gameObject is not IBattleChara chara)
             return false;
 
-        var statuses = chara.StatusList;
+        var statuses = chara.SafeStatusList;
+
+        if (statuses is null)
+            return false;
+
         var targetStatuses = statuses.Select(s => s.StatusId).ToHashSet();
         return statusList.Count switch
         {

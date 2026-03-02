@@ -141,24 +141,24 @@ internal class Presets : ConfigWindow
             PresetAttributes attributes = new(preset);
             Attributes[preset] = attributes;
         }
-        bool enabled = PresetStorage.IsEnabled(preset);
-        bool pvp = Attributes[preset].IsPvP;
-        var conflicts = Attributes[preset].Conflicts;
-        var parent = Attributes[preset].Parent;
-        var blueAttr = Attributes[preset].BlueInactive;
-        var bozjaParents = Attributes[preset].BozjaParent;
-        var eurekaParents = Attributes[preset].EurekaParent;
-        var auto = Attributes[preset].AutoAction;
-        var hidden = Attributes[preset].Hidden;
-        var presetName = info.Name;
-        var currentJob = Attributes[preset].CustomComboInfo.Job;
+        bool enabled       = PresetStorage.IsEnabled(preset);
+        bool pvp           = Attributes[preset].IsPvP;
+        var  conflicts     = Attributes[preset].Conflicts;
+        var  parent        = Attributes[preset].Parent;
+        var  blueAttr      = Attributes[preset].BlueInactive;
+        var  bozjaParents  = Attributes[preset].BozjaParent;
+        var  eurekaParents = Attributes[preset].EurekaParent;
+        var  auto          = Attributes[preset].AutoAction;
+        var  comboType     = Attributes[preset].ComboType;
+        var  hidden        = Attributes[preset].Hidden;
+        var  presetName    = info.Name;
+        var  currentJob    = Attributes[preset].CustomComboInfo.Job;
 
         ImGui.Spacing();
 
-        if (auto != null)
+        if (auto != null && (!pvp || HiddenFeaturesData.FeaturesEnabled))
         {
-            if (!Service.Configuration.AutoActions.ContainsKey(preset))
-                Service.Configuration.AutoActions[preset] = false;
+            Service.Configuration.AutoActions.TryAdd(preset, false);
 
             var label = "Auto-Mode";
             var labelSize = ImGui.CalcTextSize(label);
@@ -166,12 +166,7 @@ internal class Presets : ConfigWindow
             bool autoOn = Service.Configuration.AutoActions[preset];
             if (P.UIHelper.ShowIPCControlledCheckboxIfNeeded
                 ($"###AutoAction{preset}", ref autoOn, preset, false))
-            {
-                DebugFile.AddLog($"Set Auto-Mode for {preset} to {autoOn}");
-                P.IPCSearch.UpdateActiveJobPresets();
-                Service.Configuration.AutoActions[preset] = autoOn;
-                Service.Configuration.Save();
-            }
+                PresetStorage.ToggleAutoModeForPreset(preset);
             ImGui.SameLine();
             ImGui.Text(label);
             ImGuiComponents.HelpMarker($"Add this feature to Auto-Rotation.\n" +
@@ -179,8 +174,12 @@ internal class Presets : ConfigWindow
             ImGui.Separator();
         }
 
-        if (info.Name.Contains(" - AoE") || info.Name.Contains(" - Sin"))
-            if (P.UIHelper.PresetControlled(preset) is not null)
+        var ipcControl = P.UIHelper.PresetControlled(preset);
+        if (ipcControl is not null)
+            enabled = ipcControl.Value.enabled;
+
+        if (comboType is (ComboType.Advanced or ComboType.Simple))
+            if (ipcControl is not null)
                 P.UIHelper.ShowIPCControlledIndicatorIfNeeded(preset);
 
         if (IsSearching)
@@ -188,20 +187,7 @@ internal class Presets : ConfigWindow
 
         if (P.UIHelper.ShowIPCControlledCheckboxIfNeeded
             ($"{presetName}###{preset}", ref enabled, preset, true))
-        {
-            if (enabled)
-            {
-                PresetStorage.EnablePreset(preset);
-            }
-            else
-            {
-                PresetStorage.DisablePreset(preset);
-            }
-            P.IPCSearch.UpdateActiveJobPresets();
-            DebugFile.AddLog($"Set {preset} to {enabled}");
-
-            Service.Configuration.Save();
-        }
+            PresetStorage.TogglePreset(preset);
 
         DrawReplaceAttribute(preset);
 
@@ -342,6 +328,7 @@ internal class Presets : ConfigWindow
                     case Job.ADV:
                         {
                             All.Config.Draw(preset);
+                            Bozja.Config.Draw(preset);
                             Variant.Config.Draw(preset);
                             OccultCrescent.Config.Draw(preset);
                             break;
@@ -442,20 +429,9 @@ internal class Presets : ConfigWindow
 
                         if (conflictOriginals.Any(PresetStorage.IsEnabled))
                         {
-                            if (DateTime.UtcNow - LastPresetDeconflictTime > TimeSpan.FromSeconds(3))
-                            {
-                                if (Service.Configuration.EnabledActions.Remove(childPreset))
-                                {
-                                    PluginLog.Debug($"Removed {childPreset} due to conflict with {preset}");
-                                    Service.Configuration.Save();
-                                }
-                                LastPresetDeconflictTime = DateTime.UtcNow;
-                            }
-
-                            // Keep removed items in the counter
+                            // Keep conflicted items in the counter
                             FeaturesWindow.CurrentPreset += 1 + AllChildren(presetChildren[childPreset]);
                         }
-
                         else
                         {
                             draw();
@@ -615,11 +591,19 @@ internal class Presets : ConfigWindow
         return true;
     }
 
-    private static bool DrawOccultJobIcon(Preset preset)
+    private static bool DrawOccultJobIcon(Preset? preset, int? jobID = null)
     {
-        if (preset.Attributes().OccultCrescentJob == null) return false;
-        var baseJobID = preset.Attributes().OccultCrescentJob.JobId;
-        if (baseJobID == -1) return false;
+        int baseJobID;
+        if (preset is {} realPreset)
+        {
+            if (realPreset.Attributes().OccultCrescentJob == null) return false;
+            baseJobID = realPreset.Attributes().OccultCrescentJob.JobId;
+            if (baseJobID == -1) return false;
+        }
+        else if (jobID is not null)
+            baseJobID = jobID.Value;
+        else
+            return false;
 
         #region Error Handling
         string? error = null;
@@ -651,11 +635,17 @@ internal class Presets : ConfigWindow
         var scale = Math.Min(iconMaxSize / icon.Size.X, iconMaxSize / icon.Size.Y);
         var imgSize = new Vector2(icon.Size.X * scale, icon.Size.Y * scale);
 
+        if (jobID is not null)
+            imgSize *= 3f;
+
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() - 6f.Scale());
         ImGui.Image(icon.Handle, imgSize);
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() + 6f.Scale());
         return true;
     }
+
+    internal static void DrawOccultJobIcon(int jobID) =>
+        DrawOccultJobIcon(null, jobID);
 
 
     internal static int AllChildren((Preset Preset, CustomComboInfoAttribute Info)[] children)

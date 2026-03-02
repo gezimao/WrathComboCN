@@ -1,4 +1,6 @@
-﻿namespace WrathCombo.AutoRotation;
+﻿using WrathCombo.API.Enum;
+
+namespace WrathCombo.AutoRotation;
 
 public class AutoRotationConfig
 {
@@ -16,6 +18,7 @@ public class AutoRotationConfig
     public DPSSettings DPSSettings = new();
     public int Throttler = 50;
     public bool OrbwalkerIntegration;
+    public float QueueWindow = 0.3f;
 }
 
 public class DPSSettings
@@ -25,8 +28,9 @@ public class DPSSettings
     public int? DPSAoETargets = 3;
     public bool PreferNonCombat = false;
     public bool OnlyAttackInCombat = false;
-    public bool AlwaysSelectTarget = true;
-    public float MaxDistance = 25;
+    public bool DPSAlwaysHardTarget = false;
+    public float MaxDistance = 30;
+    public bool IgnoreRangeInBoss = true;
     public bool AoEIgnoreManual = false;
     public bool UnTargetAndDisableForPenalty = false;
 }
@@ -44,9 +48,11 @@ public class HealerSettings
     public bool AutoRez = false;
     public bool AutoRezRequireSwift = false;
     public bool AutoRezDPSJobs = false;
+    public bool AutoRezDPSJobsHealersOnly = false;
     public bool AutoRezOutOfParty = false;
     public bool AutoCleanse = false;
     public bool PreEmptiveHoT = false;
     public bool IncludeNPCs = false;
+    public bool HealerAlwaysHardTarget = false;
 
 }

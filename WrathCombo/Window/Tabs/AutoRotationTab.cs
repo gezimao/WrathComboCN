@@ -1,4 +1,6 @@
-﻿using Dalamud.Interface.Components;
+﻿#region
+
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility.Raii;
 using ECommons;
 using ECommons.DalamudServices;
@@ -12,6 +14,10 @@ using WrathCombo.Extensions;
 using WrathCombo.Services;
 using WrathCombo.Services.IPC;
 using WrathCombo.Services.IPC_Subscriber;
+using WrathCombo.API.Enum;
+
+#endregion
+
 namespace WrathCombo.Window.Tabs;
 
 internal class AutoRotationTab : ConfigWindow
@@ -43,14 +49,14 @@ internal class AutoRotationTab : ConfigWindow
             {
                 ImGuiExtensions.Prefix(false);
                 changed |= ImGui.Checkbox($"Bypass When Combo Suggests Self-Use Action", ref cfg.BypassBuffs);
-                ImGuiComponents.HelpMarker($"Many jobs have an out of combat action that can be used, for example, {RPR.Soulsow.ActionName()} or {MNK.ForbiddenMeditation.ActionName()}. This will allow these to be used without being in combnat.");
+                ImGuiComponents.HelpMarker($"Many jobs have an out of combat action that can be used, for example, {RPR.Soulsow.ActionName()} or {MNK.ForbiddenMeditation.ActionName()}. This will allow these to be used without being in combat.");
 
                 ImGuiExtensions.Prefix(false);
-                changed |= ImGui.Checkbox($"Bypass Only in Combat for Quest Targets", ref cfg.BypassQuest);
+                changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded($"Bypass Only in Combat for Quest Targets", ref cfg.BypassQuest, "BypassQuest");
                 ImGuiComponents.HelpMarker("Disables Auto-Mode outside of combat unless you're within range of a quest target.");
 
                 ImGuiExtensions.Prefix(false);
-                changed |= ImGui.Checkbox($"Bypass Only in Combat for FATE Targets", ref cfg.BypassFATE);
+                changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded($"Bypass Only in Combat for FATE Targets", ref cfg.BypassFATE, "BypassFATE");
                 ImGuiComponents.HelpMarker("Disables Auto-Mode outside of combat unless you're synced to a FATE.");
 
                 ImGuiExtensions.Prefix(true);
@@ -64,6 +70,15 @@ internal class AutoRotationTab : ConfigWindow
 
         changed |= ImGui.Checkbox("Enable Automatically in Instanced Content", ref cfg.EnableInInstance);
         changed |= ImGui.Checkbox("Disable After Leaving Instanced Content", ref cfg.DisableAfterInstance);
+
+        ImGuiEx.SetNextItemWidthScaled(100);
+        changed |= ImGuiEx.SliderFloat("Queue Window (s)", ref cfg.QueueWindow, 0f, 0.5f, $"{cfg.QueueWindow:N1}");
+        cfg.QueueWindow = (float)Math.Round(cfg.QueueWindow, 1);
+        ImGuiComponents.HelpMarker("This will determine how soon before the GCD is finished to queue up the next weaponskill or spell. Your latency may have an effect on what actions are performed so please adjust this if you're noticing improper action use, i.e double Blizzard IV casts due to MP not updating in time.");
+        if (cfg.QueueWindow > 0.5f)
+            cfg.QueueWindow = 0.5f;
+        if (cfg.QueueWindow < 0)
+            cfg.QueueWindow = 0;
 
         if (ImGui.CollapsingHeader("Damage Settings"))
         {
@@ -84,7 +99,7 @@ internal class AutoRotationTab : ConfigWindow
                                        "Furthest - Prioritises the furthest target from you.");
             ImGui.Spacing();
 
-            if (cfg.DPSRotationMode == AutoRotation.DPSRotationMode.Manual)
+            if (cfg.DPSRotationMode is DPSRotationMode.Manual)
             {
                 changed |= ImGui.Checkbox("Enforce Best AoE Target Selection", ref cfg.DPSSettings.AoEIgnoreManual);
 
@@ -104,11 +119,16 @@ internal class AutoRotationTab : ConfigWindow
             ImGuiComponents.HelpMarker($"Disabling this will turn off AoE DPS features. Otherwise will require the amount of targets required to be in range of an AoE feature's attack to use. This applies to all 3 roles, and for any features that deal AoE damage.");
 
             ImGuiEx.SetNextItemWidthScaled(100);
-            changed |= ImGui.SliderFloat("Max Target Distance", ref cfg.DPSSettings.MaxDistance, 1, 30);
+            changed |= ImGui.SliderFloat("Max Target Distance", ref cfg.DPSSettings.MaxDistance, 1, 30, $"{cfg.DPSSettings.MaxDistance:0}");
             cfg.DPSSettings.MaxDistance =
                 Math.Clamp(cfg.DPSSettings.MaxDistance, 1, 30);
 
             ImGuiComponents.HelpMarker("Max distance all targeting modes (except Manual) will look for a target. Values from 1 to 30 only.");
+
+            P.UIHelper.ShowIPCControlledIndicatorIfNeeded("IgnoreRangeInBoss");
+            changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded("Ignore Max Target Distance In Boss Fights", ref cfg.DPSSettings.IgnoreRangeInBoss, "IgnoreRangeInBoss");
+
+            ImGuiComponents.HelpMarker("When in boss fights only, any target regardless of distance can be eligible to be attacked.");
 
             P.UIHelper.ShowIPCControlledIndicatorIfNeeded("FATEPriority");
             changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded(
@@ -128,13 +148,13 @@ internal class AutoRotationTab : ConfigWindow
             if (cfg.DPSSettings.OnlyAttackInCombat && changed)
                 cfg.DPSSettings.PreferNonCombat = false;
 
-            changed |= ImGui.Checkbox("Always Target Regardless of Action", ref cfg.DPSSettings.AlwaysSelectTarget);
-
-            ImGuiComponents.HelpMarker("Normally, Auto-rotation will only target an enemy if the next action it would fire needs a target. This will change the behaviour so it will always select the target regardless of what the action can target.");
-
             changed |= ImGui.Checkbox("Un-Target and Stop Actions for Pyretics", ref cfg.DPSSettings.UnTargetAndDisableForPenalty);
 
             ImGuiComponents.HelpMarker("This will un-set any current target and disable Auto-Rotation actions if there is a current detected Pyretic (or similar, like Acceleration Bomb) mechanic affecting the player, that would harm them if they took any action.");
+
+            changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded("Always Set Hard Target", ref cfg.DPSSettings.DPSAlwaysHardTarget, "DPSAlwaysHardTarget");
+
+            ImGuiComponents.HelpMarker("Auto-rotation does not need to target enemies to work, however with this setting enabled it will always set your hard target when it executes an attack.");
 
             var npcs = Service.Configuration.IgnoredNPCs.ToList();
             var selected = npcs.FirstOrNull(x => x.Key == _selectedNpc);
@@ -227,7 +247,7 @@ internal class AutoRotationTab : ConfigWindow
             P.UIHelper.ShowIPCControlledIndicatorIfNeeded("AutoRez");
             changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded(
                 "Auto-Resurrect", ref cfg.HealerSettings.AutoRez, "AutoRez");
-            ImGuiComponents.HelpMarker($"Will attempt to resurrect dead party members. Applies to {Job.CNJ.Shorthand()}, {Job.WHM.Shorthand()}, {Job.SCH.Shorthand()}, {Job.AST.Shorthand()}, {Job.SGE.Shorthand()} and {OccultCrescent.ContentName} {Svc.Data.GetExcelSheet<MKDSupportJob>().GetRow(10).Unknown0} {OccultCrescent.Revive.ActionName()}");
+            ImGuiComponents.HelpMarker($"Will attempt to resurrect dead party members. Applies to {Job.CNJ.Shorthand()}, {Job.WHM.Shorthand()}, {Job.SCH.Shorthand()}, {Job.AST.Shorthand()}, {Job.SGE.Shorthand()} and {OccultCrescent.ContentName} {Svc.Data.GetExcelSheet<MKDSupportJob>().GetRow(10).Name} {OccultCrescent.Revive.ActionName()}");
             var autoRez = (bool)P.IPC.GetAutoRotationConfigState(AutoRotationConfigOption.AutoRez)!;
             if (autoRez)
             {
@@ -249,6 +269,15 @@ internal class AutoRotationTab : ConfigWindow
                 changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded(
                     $"Apply to {Job.SMN.Shorthand()} & {Job.RDM.Shorthand()}", ref cfg.HealerSettings.AutoRezDPSJobs, "AutoRezDPSJobs");
                 ImGuiComponents.HelpMarker($"When playing as {Job.SMN.Shorthand()} or {Job.RDM.Shorthand()}, also attempt to raise a dead party member. {Job.RDM.Shorthand()} will only resurrect with {RoleActions.Magic.Buffs.Swiftcast.StatusName()} or {RDM.Buffs.Dualcast.StatusName()} active.");
+                
+                if (cfg.HealerSettings.AutoRezDPSJobs)
+                {
+                    ImGuiExtensions.Prefix(true);
+                    P.UIHelper.ShowIPCControlledIndicatorIfNeeded("AutoRezDPSJobsHealersOnly");
+                    changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded(
+                        $"Only Raise Raisers", ref cfg.HealerSettings.AutoRezDPSJobsHealersOnly, "AutoRezDPSJobsHealersOnly");
+                    ImGuiComponents.HelpMarker($"When playing as {Job.SMN.Shorthand()} or {Job.RDM.Shorthand()}, Will only attempt to res Healers and Raisers");
+                }
             }
 
             P.UIHelper.ShowIPCControlledIndicatorIfNeeded("AutoCleanse");
@@ -266,12 +295,16 @@ internal class AutoRotationTab : ConfigWindow
                 changed |= ImGui.Checkbox($"Limit {SGE.Kardia.ActionName()} swapping to tanks only", ref cfg.HealerSettings.KardiaTanksOnly);
             }
 
-            changed |= ImGui.Checkbox($"[{Job.WHM.Shorthand()}/{Job.AST.Shorthand()}] Pre-emptively apply heal over time on focus target", ref cfg.HealerSettings.PreEmptiveHoT);
-            ImGuiComponents.HelpMarker($"Applies {WHM.Regen.ActionName()}/{AST.AspectedBenefic.ActionName()} to your focus target when out of combat and they are 30y or less away from an enemy. (Bypasses \"Only in Combat\" setting)");
+            changed |= ImGui.Checkbox($"[{Job.WHM.Shorthand()}/{Job.AST.Shorthand()}/{Job.SCH.Shorthand()}/{Job.SGE.Shorthand()}] Pre-emptively apply Heal Over Time/Shields on focus target", ref cfg.HealerSettings.PreEmptiveHoT);
+            ImGuiComponents.HelpMarker($"Applies {WHM.Regen.ActionName()}/{AST.AspectedBenefic.ActionName()}/{SGE.EukrasianDiagnosis.ActionName()}/{SCH.Adloquium.ActionName()} to your focus target when out of combat and they are 30y or less away from an enemy. (Bypasses \"Only in Combat\" setting)");
 
             P.UIHelper.ShowIPCControlledIndicatorIfNeeded("IncludeNPCs");
             changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded("Heal Friendly NPCs", ref cfg.HealerSettings.IncludeNPCs);
             ImGuiComponents.HelpMarker("Useful for healer quests where NPCs are expected to be healed but aren't added directly to your party.");
+
+            changed |= P.UIHelper.ShowIPCControlledCheckboxIfNeeded("Always Set Hard Target###HealerHardTarget", ref cfg.HealerSettings.HealerAlwaysHardTarget, "HealerAlwaysHardTarget");
+
+            ImGuiComponents.HelpMarker("Auto-rotation does not need to target allies to work, however with this setting enabled it will always set your hard target when it executes a heal.");
 
         }
 

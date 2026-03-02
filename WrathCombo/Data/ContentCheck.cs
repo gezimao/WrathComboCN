@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Window.Functions;
+using GameMain = FFXIVClientStructs.FFXIV.Client.Game.GameMain;
 using EZ = ECommons.Throttlers.EzThrottler;
 using TS = System.TimeSpan;
 
@@ -147,10 +148,20 @@ public class ContentCheck
             if (!EZ.Throttle("contentCheckInPVP", TS.FromSeconds(5)))
                 return field;
 
-            field = (Content.ContentType is ContentType.OverWorld &&
-                     Content.TerritoryName == "Wolves' Den Pier") ||
-                    Content.ContentType is ContentType.PVP;
-            return field;
+            field = Content.ContentType is ContentType.PVP;
+            if (field) return field;
+
+            bool CSPvpCheck;
+            try
+            {
+                CSPvpCheck = GameMain.IsInPvPArea() || GameMain.IsInPvPInstance();
+            }
+            catch
+            {
+                CSPvpCheck = false;
+            }
+
+            return field = CSPvpCheck;
         }
     }
 
@@ -196,7 +207,7 @@ public class ContentCheck
     {
         get
         {
-            if (!EZ.Throttle("contentCheckInFieldOperations", TS.FromSeconds(5)))
+            if (!EZ.Throttle("contentCheckInFieldRaids", TS.FromSeconds(5)))
                 return field;
 
             field = Content.ContentType is ContentType.FieldRaid;
@@ -285,7 +296,7 @@ public class ContentCheck
         ContentDifficulty.Extreme,
         ContentDifficulty.Savage,
         ContentDifficulty.CriterionSavage,
-        ContentDifficulty.Ultimate
+        ContentDifficulty.Ultimate,
     ];
 
     /// <summary>
@@ -374,7 +385,7 @@ public class ContentCheck
         ContentDifficulty.Extreme,
         ContentDifficulty.Savage,
         ContentDifficulty.CriterionSavage,
-        ContentDifficulty.Ultimate
+        ContentDifficulty.Ultimate,
     ];
 
     /// <summary>
@@ -540,13 +551,19 @@ public class ContentCheck
 
         if (Content.ContentType is ContentType.Raid)
         {
-            if (Content.ContentFinderConditionRow.HasValue && Content.ContentFinderConditionRow.Value.RowId is 93 or 94 or 95 or 96 or 97 or 98 or 99 or 100 or 103 or 104 or 105 or 107 or 108 or 113 or 114 or 137 or 138 or 186 or 187 or 188)
+            if (Content.ContentFinderConditionRowId is 93 or 94 or 95 or 96 or 97 
+                or 98 or 99 or 100 or 103 or 104 or 105 or 107 or 108 or 113 or 114
+                or 137 or 138 or 186 or 187 or 188)
                 return false;
 
             return true;
         }
 
-        if (Content.ContentFinderConditionRow?.RowId is 1010) //Chaotic Alliance, might end up being refactored in the future
+        if (Content.ContentDifficulty is
+            ContentDifficulty.Chaotic or
+            ContentDifficulty.Savage or
+            ContentDifficulty.CriterionSavage or
+            ContentDifficulty.Ultimate)
             return true;
 
         return false;

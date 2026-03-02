@@ -1,4 +1,3 @@
-using Dalamud.Interface.Colors;
 using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Extensions;
 using static WrathCombo.Window.Functions.UserConfig;
@@ -12,6 +11,8 @@ internal partial class BLM
         {
             switch (preset)
             {
+                #region ST
+
                 case Preset.BLM_ST_Opener:
                     DrawHorizontalRadioButton(BLM_SelectedOpener,
                         "Standard opener", "Uses Standard opener",
@@ -57,40 +58,52 @@ internal partial class BLM
 
                 case Preset.BLM_ST_Movement:
                     DrawHorizontalMultiChoice(BLM_ST_MovementOption,
-                        $"Use {Triplecast.ActionName()}", "", 4, 0);
+                        $"Use {Triplecast.ActionName()}", "Use triplecast when you don't have swiftcast active.", 6, 0);
 
-                    DrawPriorityInput(BLM_ST_Movement_Priority,
-                        4, 0, $"{Triplecast.ActionName()} Priority: ");
-
-                    DrawHorizontalMultiChoice(BLM_ST_MovementOption,
-                        $"Use {Paradox.ActionName()}", "", 4, 1);
-
-                    DrawPriorityInput(BLM_ST_Movement_Priority,
-                        4, 1, $"{Paradox.ActionName()} Priority: ");
+                    DrawPriorityInput(BLM_ST_MovementPriority,
+                        6, 0, $"{Triplecast.ActionName()} Priority: ");
 
                     DrawHorizontalMultiChoice(BLM_ST_MovementOption,
-                        $"Use {Role.Swiftcast.ActionName()}", "", 4, 2);
+                        $"Use {Paradox.ActionName()}", "Use Paradox when in AF 3.", 6, 1);
 
-                    DrawPriorityInput(BLM_ST_Movement_Priority,
-                        4, 2, $"{Role.Swiftcast.ActionName()} Priority: ");
+                    DrawPriorityInput(BLM_ST_MovementPriority,
+                        6, 1, $"{Paradox.ActionName()} Priority: ");
 
                     DrawHorizontalMultiChoice(BLM_ST_MovementOption,
-                        $"Use {Foul.ActionName()} / {Xenoglossy.ActionName()}", "", 4, 3);
+                        $"Use {Role.Swiftcast.ActionName()}", "Use swiftcast when you don't have Triplecast.", 6, 2);
 
-                    DrawPriorityInput(BLM_ST_Movement_Priority,
-                        4, 3, $"{Xenoglossy.ActionName()} Priority: ");
+                    DrawPriorityInput(BLM_ST_MovementPriority,
+                        6, 2, $"{Role.Swiftcast.ActionName()} Priority: ");
+
+                    DrawHorizontalMultiChoice(BLM_ST_MovementOption,
+                        $"Use {Foul.ActionName()} / {Xenoglossy.ActionName()}", "Use Foul/Xenoglossy.", 6, 3);
+
+                    DrawPriorityInput(BLM_ST_MovementPriority,
+                        6, 3, $"{Xenoglossy.ActionName()} Priority: ");
+
+                    DrawHorizontalMultiChoice(BLM_ST_MovementOption,
+                        $"Use {Fire3.ActionName()}", "Use Fire III when you have firestarter proc.", 6, 4);
+
+                    DrawPriorityInput(BLM_ST_MovementPriority,
+                        6, 4, $"{Fire3.ActionName()} Priority: ");
+
+                    DrawHorizontalMultiChoice(BLM_ST_MovementOption,
+                        $"Use {Scathe.ActionName()}", "Use Scathe.", 6, 5);
+
+                    DrawPriorityInput(BLM_ST_MovementPriority,
+                        6, 5, $"{Scathe.ActionName()} Priority: ");
                     break;
 
                 case Preset.BLM_ST_UsePolyglot:
-                    if (DrawSliderInt(0, 3, BLM_ST_Polyglot_Save,
+                    if (DrawSliderInt(0, 3, BLM_ST_PolyglotSaveUsage,
                         "How many charges to save for manual use?"))
-                        if (BLM_ST_Polyglot_Movement > 3 - BLM_ST_Polyglot_Save)
-                            BLM_ST_Polyglot_Movement.Value = 3 - BLM_ST_Polyglot_Save;
+                        if (BLM_ST_PolyglotMovement > 3 - BLM_ST_PolyglotSaveUsage)
+                            BLM_ST_PolyglotMovement.Value = 3 - BLM_ST_PolyglotSaveUsage;
 
-                    if (DrawSliderInt(0, 3, BLM_ST_Polyglot_Movement,
+                    if (DrawSliderInt(0, 3, BLM_ST_PolyglotMovement,
                         "How many charges to save for movement?"))
-                        if (BLM_ST_Polyglot_Save > 3 - BLM_ST_Polyglot_Movement)
-                            BLM_ST_Polyglot_Save.Value = 3 - BLM_ST_Polyglot_Movement;
+                        if (BLM_ST_PolyglotSaveUsage > 3 - BLM_ST_PolyglotMovement)
+                            BLM_ST_PolyglotSaveUsage.Value = 3 - BLM_ST_PolyglotMovement;
                     break;
 
                 case Preset.BLM_ST_Triplecast:
@@ -101,37 +114,34 @@ internal partial class BLM
                         "Not under Leylines", "Do not use while under the effect of Leylines.\nThis is the recommended behaviour.", 1);
 
                     if (BLM_ST_MovementOption[0])
-                        DrawSliderInt(1, 2, BLM_ST_Triplecast_MovementCharges,
+                        DrawSliderInt(1, 2, BLM_ST_TriplecastMovementCharges,
                             "How many charges to save for movement?");
                     break;
 
 
                 case Preset.BLM_ST_Thunder:
 
-                    DrawSliderInt(0, 50, BLM_ST_ThunderHPOption,
-                        "Stop using at Enemy HP %. Set to Zero to disable this check.");
+                    DrawSliderInt(0, 100, BLM_ST_ThunderBossOption,
+                        "Bosses Only. Stop using at Enemy HP %.");
 
-                    ImGui.Indent();
+                    DrawSliderInt(0, 100, BLM_ST_ThunderBossAddsOption,
+                        "Boss Encounter Non Bosses. Stop using at Enemy HP %.");
 
-                    ImGui.TextColored(ImGuiColors.DalamudYellow,
-                        "Select what kind of enemies the HP check should be applied to:");
+                    DrawSliderInt(0, 100, BLM_ST_ThunderTrashOption,
+                        "Non boss encounter. Stop using at Enemy HP %.");
 
-                    DrawHorizontalRadioButton(BLM_ST_ThunderBossOption,
-                        "Non-Bosses", "Only applies the HP check above to non-bosses.\nAllows you to only stop DoTing early when it's not a boss.", 0);
-
-                    DrawHorizontalRadioButton(BLM_ST_ThunderBossOption,
-                        "All Enemies", "Applies the HP check above to all enemies.", 1);
-
-                    DrawSliderInt(0, 5, BLM_ST_ThunderRefresh,
+                    DrawRoundedSliderFloat(0, 5, BLM_ST_ThunderRefresh,
                         "Seconds remaining before reapplying the DoT. Set to Zero to disable this check.");
-
-                    ImGui.Unindent();
                     break;
 
                 case Preset.BLM_ST_Manaward:
-                    DrawSliderInt(0, 100, BLM_ST_Manaward_Threshold,
+                    DrawSliderInt(0, 100, BLM_ST_ManawardHPThreshold,
                         $"{Manaward.ActionName()} HP percentage threshold");
                     break;
+
+                #endregion
+
+                #region AoE
 
                 case Preset.BLM_AoE_LeyLines:
 
@@ -158,7 +168,7 @@ internal partial class BLM
                     break;
 
                 case Preset.BLM_AoE_Triplecast:
-                    DrawSliderInt(0, 1, BLM_AoE_Triplecast_HoldCharges,
+                    DrawSliderInt(0, 1, BLM_AoE_TriplecastHoldCharges,
                         $"How many charges of {Triplecast.ActionName()} to keep ready? (0 = Use all)");
                     break;
 
@@ -172,6 +182,9 @@ internal partial class BLM
                         "Add Field Mouseover", "Adds Field mouseover targetting.");
                     break;
 
+                #endregion
+
+                #region Misc
 
                 case Preset.BLM_Fire1and3:
                     DrawRadioButton(BLM_F1to3,
@@ -225,39 +238,47 @@ internal partial class BLM
                     DrawAdditionalBoolChoice(BLM_AmplifierXenoCD,
                         "Show Xenoglossy when Amplifier is on cooldown", "Makes it so that Xenoglossy also shows when Amplifier is on cooldown.");
                     break;
+
+                #endregion
             }
         }
 
         #region Variables
 
         public static UserInt
-            BLM_SelectedOpener = new("BLM_SelectedOpener", 0),
+
+            //ST
+            BLM_SelectedOpener = new("BLM_SelectedOpener"),
             BLM_Balance_Content = new("BLM_Balance_Content", 1),
             BLM_ST_LeyLinesCharges = new("BLM_ST_LeyLinesCharges", 1),
-            BLM_ST_LeyLinesMovement = new("BLM_ST_LeyLinesMovement", 0),
+            BLM_ST_LeyLinesMovement = new("BLM_ST_LeyLinesMovement"),
             BLM_ST_LeyLinesHPOption = new("BLM_ST_LeyLinesOption", 25),
-            BLM_ST_LeyLinesBossOption = new("BLM_ST_LeyLinesSubOption", 0),
-            BLM_ST_ThunderHPOption = new("BLM_ST_ThunderOption", 10),
-            BLM_ST_ThunderBossOption = new("BLM_ST_Thunder_SubOption", 0),
+            BLM_ST_LeyLinesBossOption = new("BLM_ST_LeyLinesSubOption"),
+            BLM_ST_ThunderBossOption = new("BLM_ST_ThunderBossOption"),
+            BLM_ST_ThunderBossAddsOption = new("BLM_ST_ThunderBossAddsOption", 10),
+            BLM_ST_ThunderTrashOption = new("BLM_ST_ThunderTrashOption", 25),
             BLM_ST_Triplecast_WhenToUse = new("BLM_ST_Triplecast_WhenToUse", 1),
-            BLM_ST_ThunderRefresh = new("BLM_ST_ThunderUptime_Threshold", 5),
-            BLM_ST_Triplecast_MovementCharges = new("BLM_ST_Triplecast_MovementCharges", 1),
-            BLM_ST_Polyglot_Movement = new("BLM_ST_Polyglot_Movement", 1),
-            BLM_ST_Polyglot_Save = new("BLM_ST_Polyglot_Save", 0),
-            BLM_ST_Manaward_Threshold = new("BLM_ST_Manaward_Threshold", 40),
-            BLM_AoE_Triplecast_HoldCharges = new("BLM_AoE_Triplecast_HoldCharges", 0),
-            BLM_AoE_LeyLinesCharges = new("BLM_AoE_LeyLinesCharges", 0),
-            BLM_AoE_LeyLinesMovement = new("BLM_AoE_LeyLinesMovement", 0),
-            BLM_AoE_LeyLinesOption = new("BLM_AoE_LeyLinesOption", 40),
-            BLM_AoE_ThunderHP = new("BLM_AoE_ThunderHP", 40),
-            BLM_B1to3 = new("BLM_B1to3", 0),
-            BLM_B4toDespair = new("BLM_B4toDespair", 0),
-            BLM_F1to3 = new("BLM_F1to3", 0),
-            BLM_Fire4_FireAndIce = new("BLM_Fire4_FireAndIce", 0);
+            BLM_ST_TriplecastMovementCharges = new("BLM_ST_TriplecastMovementCharges", 1),
+            BLM_ST_PolyglotMovement = new("BLM_ST_PolyglotMovement", 1),
+            BLM_ST_PolyglotSaveUsage = new("BLM_ST_PolyglotSaveUsage"),
+            BLM_ST_ManawardHPThreshold = new("BLM_ST_ManawardHPThreshold", 25),
+
+            //AoE
+            BLM_AoE_TriplecastHoldCharges = new("BLM_AoE_TriplecastHoldCharges"),
+            BLM_AoE_LeyLinesCharges = new("BLM_AoE_LeyLinesCharges"),
+            BLM_AoE_LeyLinesMovement = new("BLM_AoE_LeyLinesMovement"),
+            BLM_AoE_LeyLinesOption = new("BLM_AoE_LeyLinesOption", 25),
+            BLM_AoE_ThunderHP = new("BLM_AoE_ThunderHP", 25),
+
+            //Misc
+            BLM_B1to3 = new("BLM_B1to3"),
+            BLM_F1to3 = new("BLM_F1to3"),
+            BLM_Fire4_FireAndIce = new("BLM_Fire4_FireAndIce");
 
         public static UserFloat
             BLM_ST_LeyLinesTimeStill = new("BLM_ST_LeyLinesTimeStill", 2.5f),
-            BLM_AoE_LeyLinesTimeStill = new("BLM_AoE_LeyLinesTimeStill", 2.5f);
+            BLM_AoE_LeyLinesTimeStill = new("BLM_AoE_LeyLinesTimeStill", 2.5f),
+            BLM_ST_ThunderRefresh = new("BLM_ST_ThunderUptime_Threshold", 2.5f);
 
         public static UserBool
             BLM_AM_FieldMouseover = new("BLM_AM_FieldMouseover"),
@@ -272,9 +293,8 @@ internal partial class BLM
             BLM_ST_MovementOption = new("BLM_ST_MovementOption");
 
         public static UserIntArray
-            BLM_ST_Movement_Priority = new("BLM_ST_Movement_Priority");
+            BLM_ST_MovementPriority = new("BLM_ST_MovementPriority");
 
         #endregion
-
     }
 }

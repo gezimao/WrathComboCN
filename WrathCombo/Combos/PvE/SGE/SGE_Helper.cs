@@ -14,10 +14,10 @@ namespace WrathCombo.Combos.PvE;
 
 internal partial class SGE
 {
-    private static Status? DosisDebuff =>
+    private static IStatus? DosisDebuff =>
         GetStatusEffect(DosisList[OriginalHook(Dosis)].Debuff, CurrentTarget);
 
-    private static Status? DyskrasiaDebuff =>
+    private static IStatus? DyskrasiaDebuff =>
         GetStatusEffect(Debuffs.EukrasianDyskrasia, CurrentTarget);
 
     private static bool MaxPhlegma =>
@@ -31,11 +31,78 @@ internal partial class SGE
     private static IGameObject? HealStack =>
         SimpleTarget.Stack.AllyToHeal;
 
-    private static bool HasAddersgall() =>
-        Addersgall > 0;
+    private static bool HasAddersgall() => Addersgall > 0;
+    
+    private static bool AdvancedHasAddersgall() => Addersgall > SGE_Heal_HoldAddersgall;
 
     private static bool HasAddersting() =>
         Addersting > 0;
+
+    #region Lists
+
+    internal static readonly FrozenDictionary<uint, ushort> EukrasianDosisList = new Dictionary<uint, ushort>
+    {
+        { Dosis, Debuffs.EukrasianDosis },
+        { Dosis2, Debuffs.EukrasianDosis2 },
+        { Dosis3, Debuffs.EukrasianDosis3 }
+    }.ToFrozenDictionary();
+
+    private static readonly List<uint>
+        AddersgallList = [Taurochole, Druochole, Ixochole, Kerachole],
+        DyskrasiaList = [Dyskrasia, Dyskrasia2];
+
+    private static readonly FrozenDictionary<uint, (ushort Debuff, uint Eukrasian)> DosisList = new Dictionary<uint, (ushort D, uint E)>
+    {
+        { Dosis, (D: Debuffs.EukrasianDosis, E: EukrasianDosis) },
+        { Dosis2, (D: Debuffs.EukrasianDosis2, E: EukrasianDosis2) },
+        { Dosis3, (D: Debuffs.EukrasianDosis3, E: EukrasianDosis3) },
+        //For bad latency/fps where OriginalHook(Dosis) might return an Eukrasian,
+        { EukrasianDosis, (D: Debuffs.EukrasianDosis, E: EukrasianDosis) },
+        { EukrasianDosis2, (D: Debuffs.EukrasianDosis2, E: EukrasianDosis2) },
+        { EukrasianDosis3, (D: Debuffs.EukrasianDosis3, E: EukrasianDosis3) }
+    }.ToFrozenDictionary();
+
+    #endregion
+
+    #region Gauge
+
+    private static SGEGauge Gauge => GetJobGauge<SGEGauge>();
+
+    private static byte Addersgall => Gauge.Addersgall;
+
+    private static byte Addersting => Gauge.Addersting;
+
+    #endregion
+
+    #region Dot Checker
+
+    internal static bool NeedsDoT()
+    {
+        uint dotAction = OriginalHook(Dosis);
+        int hpThreshold = IsNotEnabled(Preset.SGE_ST_Simple_DPS) ? ComputeHpThreshold(CurrentTarget) : 0;
+        EukrasianDosisList.TryGetValue(dotAction, out ushort dotDebuffID);
+        double dotRefresh = IsNotEnabled(Preset.SGE_ST_Simple_DPS) ? SGE_ST_DPS_EukrasianDosisUptime_Threshold : 2.5;
+        float dotRemaining = GetStatusEffectRemainingTime(dotDebuffID, CurrentTarget);
+
+        return ActionReady(Eukrasia) &&
+               CanApplyStatus(CurrentTarget, dotDebuffID) &&
+               HasBattleTarget() &&
+               GetTargetHPPercent() > hpThreshold &&
+               dotRemaining <= dotRefresh;
+    }
+
+    internal static int ComputeHpThreshold(IGameObject? x)
+    {
+        if (x is null)
+            return 0;
+        
+        if (InBossEncounter())
+            return x.IsBoss() ? SGE_ST_DPS_EukrasianDosisBossOption : SGE_ST_DPS_EukrasianDosisBossAddsOption;
+
+        return SGE_ST_DPS_EukrasianDosisTrashOption;
+    }
+
+    #endregion
 
     #region Healing
 
@@ -43,12 +110,12 @@ internal partial class SGE
 
     private static bool RaidwideKerachole() =>
         IsEnabled(Preset.SGE_Raidwide_Kerachole) &&
-        ActionReady(Kerachole) && HasAddersgall() &&
-        CanWeave() && RaidWideCasting();
+        ActionReady(Kerachole) && AdvancedHasAddersgall() &&
+        CanWeave() && GroupDamageIncoming();
 
     private static bool RaidwideHolos() =>
         IsEnabled(Preset.SGE_Raidwide_Holos) &&
-        ActionReady(Holos) && CanWeave() && RaidWideCasting() &&
+        ActionReady(Holos) && CanWeave() && GroupDamageIncoming() &&
         GetPartyAvgHPPercent() <= SGE_Raidwide_HolosOption;
 
     private static bool RaidwideEprognosis()
@@ -56,16 +123,16 @@ internal partial class SGE
         bool shieldCheck = GetPartyBuffPercent(Buffs.EukrasianPrognosis) <= SGE_AoE_Heal_EPrognosisOption &&
                            GetPartyBuffPercent(SCH.Buffs.Galvanize) <= SGE_AoE_Heal_EPrognosisOption;
 
-        return IsEnabled(Preset.SGE_Raidwide_EPrognosis) && shieldCheck && RaidWideCasting();
+        return IsEnabled(Preset.SGE_Raidwide_EPrognosis) && shieldCheck && GroupDamageIncoming() && LevelChecked(Eukrasia);
     }
 
     #endregion
 
     #region ST
 
-    private static int GetMatchingConfigST(int i, IGameObject? optionalTarget, out uint action, out bool enabled)
+    private static int GetMatchingConfigST(int i, IGameObject? target, out uint action, out bool enabled)
     {
-        IGameObject? healTarget = optionalTarget ?? SimpleTarget.Stack.AllyToHeal;
+        IGameObject? healTarget = target ?? SimpleTarget.Stack.AllyToHeal;
 
         bool shieldCheck = !SGE_ST_Heal_EDiagnosisOpts[0] ||
                            !HasStatusEffect(Buffs.EukrasianDiagnosis, healTarget, true) &&
@@ -73,7 +140,7 @@ internal partial class SGE
 
         bool scholarShieldCheck = !SGE_ST_Heal_EDiagnosisOpts[1] ||
                                   !HasStatusEffect(SCH.Buffs.Galvanize);
-        bool tankCheck = healTarget.IsInParty() && healTarget.GetRole() is CombatRole.Tank;
+        bool tankCheck = healTarget.IsInParty() && healTarget.Role is CombatRole.Tank;
 
         switch (i)
         {
@@ -96,7 +163,7 @@ internal partial class SGE
 
             case 3:
                 action = Taurochole;
-                enabled = IsEnabled(Preset.SGE_ST_Heal_Taurochole) && HasAddersgall() &&
+                enabled = IsEnabled(Preset.SGE_ST_Heal_Taurochole) && AdvancedHasAddersgall() &&
                           (tankCheck || !IsInParty() || !SGE_ST_Heal_Taurochole_TankOnly);
                 return SGE_ST_Heal_Taurochole;
 
@@ -116,7 +183,7 @@ internal partial class SGE
 
             case 6:
                 action = Druochole;
-                enabled = IsEnabled(Preset.SGE_ST_Heal_Druochole) && HasAddersgall();
+                enabled = IsEnabled(Preset.SGE_ST_Heal_Druochole) && AdvancedHasAddersgall();
                 return SGE_ST_Heal_Druochole;
 
             case 7:
@@ -128,7 +195,7 @@ internal partial class SGE
 
             case 8:
                 action = Kerachole;
-                enabled = IsEnabled(Preset.SGE_ST_Heal_Kerachole) && HasAddersgall() &&
+                enabled = IsEnabled(Preset.SGE_ST_Heal_Kerachole) && AdvancedHasAddersgall() &&
                           (!SGE_ST_Heal_KeracholeBossOption || !InBossEncounter());
                 return SGE_ST_Heal_KeracholeHP;
 
@@ -175,13 +242,13 @@ internal partial class SGE
                 enabled = IsEnabled(Preset.SGE_AoE_Heal_Kerachole) &&
                           (!SGE_AoE_Heal_KeracholeTrait ||
                            SGE_AoE_Heal_KeracholeTrait && TraitLevelChecked(Traits.EnhancedKerachole)) &&
-                          HasAddersgall();
+                          AdvancedHasAddersgall();
                 return SGE_AoE_Heal_KeracholeOption;
 
             case 1:
                 action = Ixochole;
                 enabled = IsEnabled(Preset.SGE_AoE_Heal_Ixochole) &&
-                          HasAddersgall();
+                          AdvancedHasAddersgall();
                 return SGE_AoE_Heal_IxocholeOption;
 
             case 2:
@@ -316,7 +383,7 @@ internal partial class SGE
         ];
 
         internal override UserData ContentCheckConfig => SGE_Balance_Content;
-
+        public override Preset Preset => Preset.SGE_ST_DPS_Opener;
         public override bool HasCooldowns() =>
             GetRemainingCharges(Phlegma3) is 2 &&
             IsOffCooldown(Psyche) &&
@@ -357,37 +424,12 @@ internal partial class SGE
         ];
 
         internal override UserData ContentCheckConfig => SGE_Balance_Content;
-
+        public override Preset Preset => Preset.SGE_ST_DPS_Opener;
         public override bool HasCooldowns() =>
             GetRemainingCharges(Phlegma3) is 2 &&
             IsOffCooldown(Psyche) &&
             IsOffCooldown(Pneuma);
     }
-
-    #endregion
-
-    #region Gauge
-
-    private static SGEGauge Gauge = GetJobGauge<SGEGauge>();
-
-    private static byte Addersgall => Gauge.Addersgall;
-
-    private static byte Addersting => Gauge.Addersting;
-
-    private static readonly List<uint>
-        AddersgallList = [Taurochole, Druochole, Ixochole, Kerachole],
-        DyskrasiaList = [Dyskrasia, Dyskrasia2];
-
-    private static readonly FrozenDictionary<uint, (ushort Debuff, uint Eukrasian)> DosisList = new Dictionary<uint, (ushort D, uint E)>
-    {
-        { Dosis, (D: Debuffs.EukrasianDosis, E: EukrasianDosis) },
-        { Dosis2, (D: Debuffs.EukrasianDosis2, E: EukrasianDosis2) },
-        { Dosis3, (D: Debuffs.EukrasianDosis3, E: EukrasianDosis3) },
-        //For bad latency/fps where OriginalHook(Dosis) might return an Eukrasian,
-        { EukrasianDosis, (D: Debuffs.EukrasianDosis, E: EukrasianDosis) },
-        { EukrasianDosis2, (D: Debuffs.EukrasianDosis2, E: EukrasianDosis2) },
-        { EukrasianDosis3, (D: Debuffs.EukrasianDosis3, E: EukrasianDosis3) }
-    }.ToFrozenDictionary();
 
     #endregion
 
@@ -485,5 +527,4 @@ internal partial class SGE
     }
 
     #endregion
-
 }

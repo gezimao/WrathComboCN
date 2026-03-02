@@ -8,6 +8,7 @@ using ECommons.GameHelpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Dalamud.Game.ClientState.Conditions;
 using WrathCombo.Core;
 using WrathCombo.CustomComboNS;
 using WrathCombo.CustomComboNS.Functions;
@@ -16,7 +17,6 @@ using WrathCombo.Services;
 using static WrathCombo.Combos.PvE.DNC.Config;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 using EZ = ECommons.Throttlers.EzThrottler;
-using Options = WrathCombo.Combos.Preset;
 using TS = System.TimeSpan;
 
 // ReSharper disable ReturnTypeCanBeNotNullable
@@ -115,11 +115,11 @@ internal partial class DNC
         P.IPC.GetAutoRotationState() && P.IPC.GetComboState(
             (singleTarget
                 ? (simpleMode
-                    ? Options.DNC_ST_SimpleMode
-                    : Options.DNC_ST_AdvancedMode)
+                    ? Preset.DNC_ST_SimpleMode
+                    : Preset.DNC_ST_AdvancedMode)
                 : (simpleMode
-                    ? Options.DNC_AoE_SimpleMode
-                    : Options.DNC_AoE_AdvancedMode)
+                    ? Preset.DNC_AoE_SimpleMode
+                    : Preset.DNC_AoE_AdvancedMode)
             ).ToString()
         )!.Values.Last();
 
@@ -139,7 +139,7 @@ internal partial class DNC
     private static uint FinishOrHold(uint desiredFinish)
     {
         // If the option to hold is not enabled
-        if (IsNotEnabled(Options.DNC_ST_BlockFinishes))
+        if (IsNotEnabled(Preset.DNC_ST_BlockFinishes))
             return desiredFinish;
 
         // Return the Finish if the dance is about to expire
@@ -188,8 +188,8 @@ internal partial class DNC
 
             field = GetPartyMembers()
                 .Where(HasMyPartner)
-                .Select(x => (ulong?)x.GameObjectId)
-                .FirstOrDefault();
+                .FirstOrDefault()?
+                .GameObjectId;
             return field;
         }
     }
@@ -201,6 +201,13 @@ internal partial class DNC
             if (!EZ.Throttle("dncPartnerDesiredCheck", TS.FromSeconds(2)) &&
                 field is not null)
                 return field;
+            
+            if (Player.Object is null ||
+                Player.Job != Job.DNC ||
+                Svc.Condition[ConditionFlag.BetweenAreas] ||
+                Svc.Condition[ConditionFlag.Unconscious] ||
+                !LevelChecked(ClosedPosition))
+                return field = null;
 
             field = TryGetDancePartner(out var partner)
                 ? partner.GameObjectId
@@ -211,16 +218,18 @@ internal partial class DNC
 
     private static bool CurrentPartnerNonOptimal =>
         DesiredDancePartner is not null &&
-        (!HasStatusEffect(Buffs.ClosedPosition) &&
-         (IsInParty() ||
-          HasCompanionPresent())) ||
-        (CurrentDancePartner is not null &&
-         DesiredDancePartner != CurrentDancePartner);
+        (
+            // Have no partner and one is theoretically available
+            (!HasStatusEffect(Buffs.ClosedPosition) &&
+             (IsInParty() || HasCompanionPresent())) ||
+            // Have a partner, but it's not the optimal one
+            (CurrentDancePartner is not null &&
+             DesiredDancePartner != CurrentDancePartner)
+        );
 
     [ActionRetargeting.TargetResolver]
     internal static IGameObject? DancePartnerResolver () =>
-        Svc.Objects.FirstOrDefault(x =>
-            x.GameObjectId == DesiredDancePartner) ??
+        DesiredDancePartner.GetObject() ??
         (!HasStatusEffect(Buffs.ClosedPosition)
             ? SimpleTarget.AnySelfishDPS ?? SimpleTarget.AnyMeleeDPS ?? SimpleTarget.AnyDPS
             : null);
@@ -235,8 +244,7 @@ internal partial class DNC
         #region Skip a new check, if the current partner is just out of range
         if (CurrentDancePartner is not null)
         {
-            var currentPartner = Svc.Objects.FirstOrDefault(
-                x => x.GameObjectId == CurrentDancePartner);
+            var currentPartner = CurrentDancePartner.GetObject();
             if (currentPartner is not null &&
                 !currentPartner.IsWithinRange(30) &&
                 !currentPartner.IsDead &&
@@ -260,11 +268,13 @@ internal partial class DNC
         }
 
         var party = GetPartyMembers()
-            .Where(member => member.GameObjectId != Player.Object.GameObjectId)
-            .Where(member => member.BattleChara is not null && !member.BattleChara.IsDead)
-            .Where(member => IsInRange(member.BattleChara, 30))
-            .Where(member => !HasAnyPartner(member) || HasMyPartner(member))
-            .Select(member => member.BattleChara)
+            .Where(member => member.GameObject.IsNotThePlayer() &&
+                             member.BattleChara is not null &&
+                             !member.BattleChara.IsDead &&
+                             member.GameObject.IsWithinRange(30) &&
+                             (!HasAnyPartner(member) ||
+                              HasMyPartner(member)))
+            .Select(member => member.BattleChara!)
             .ToList();
 
         if (party.Count < 1 && !HasCompanionPresent())
@@ -354,7 +364,7 @@ internal partial class DNC
                     PartnerPriority.RolePrio.GetValueOrDefault(
                         x.ClassJob.Value.Role, int.MaxValue));
 
-            switch (Player.Level)
+            switch (Svc.PlayerState.EffectiveLevel)
             {
                 case < 100 and >= 90:
                     orderedFilter = orderedFilter
@@ -371,7 +381,7 @@ internal partial class DNC
             }
 
             // Simple ilvl tie-breaker
-            orderedFilter = orderedFilter.ThenBy(x => x.MaxHp);
+            orderedFilter = orderedFilter.ThenByDescending(x => x.MaxHp);
 
             filter = orderedFilter.ToList();
 
@@ -489,8 +499,8 @@ internal partial class DNC
     ///     Consolidating a few checks to reduce duplicate code.
     /// </summary>
     private static bool WantsCustomStepsOnSmallerFeatures =>
-        IsEnabled(Options.DNC_CustomDanceSteps) &&
-        IsEnabled(Options.DNC_CustomDanceSteps_Conflicts) &&
+        IsEnabled(Preset.DNC_CustomDanceSteps) &&
+        IsEnabled(Preset.DNC_CustomDanceSteps_Conflicts) &&
         Gauge.IsDancing;
 
     /// <summary>
@@ -584,7 +594,7 @@ internal partial class DNC
         } =
         [
             ([4], () => 7),
-            ([5], () => (!DNC_ST_OpenerOption_Peloton ? 12 : 5)),
+            ([5], () => (!DNC_ST_OpenerOption_Peloton ? 13 : 6)),
         ];
 
         public override List<(int[], uint, Func<bool>)> SubstitutionSteps
@@ -614,6 +624,8 @@ internal partial class DNC
         [
             ([4], () => !DNC_ST_OpenerOption_Peloton),
         ];
+
+        public override Preset Preset => Preset.DNC_ST_BalanceOpener;
 
         internal override UserData? ContentCheckConfig =>
             DNC_ST_OpenerDifficulty;
@@ -684,7 +696,7 @@ internal partial class DNC
         } =
         [
             ([4], () => 2),
-            ([5], () => (!DNC_ST_OpenerOption_Peloton ? 4 : 2)),
+            ([5], () => (!DNC_ST_OpenerOption_Peloton ? 5 : 3)),
         ];
 
         public override List<(int[], uint, Func<bool>)> SubstitutionSteps
@@ -715,6 +727,7 @@ internal partial class DNC
             ([4], () => !DNC_ST_OpenerOption_Peloton),
         ];
 
+        public override Preset Preset => Preset.DNC_ST_BalanceOpener;
         internal override UserData? ContentCheckConfig =>
             DNC_ST_OpenerDifficulty;
 
@@ -788,7 +801,7 @@ internal partial class DNC
         } =
         [
             ([5], () => 1),
-            ([6], () => (!DNC_ST_OpenerOption_Peloton ? 7 : 6)),
+            ([6], () => (!DNC_ST_OpenerOption_Peloton ? 8 : 7)),
         ];
 
         public override List<(int[], uint, Func<bool>)> SubstitutionSteps
@@ -819,6 +832,7 @@ internal partial class DNC
             ([5], () => !DNC_ST_OpenerOption_Peloton),
         ];
 
+        public override Preset Preset => Preset.DNC_ST_BalanceOpener;
         internal override UserData? ContentCheckConfig =>
             DNC_ST_OpenerDifficulty;
 
@@ -901,6 +915,7 @@ internal partial class DNC
                 HasStatusEffect(Buffs.SilkenFlow) || HasStatusEffect(Buffs.FlourishingFlow)),
         ];
 
+        public override Preset Preset => Preset.DNC_ST_BalanceOpener;
         internal override UserData? ContentCheckConfig =>
             DNC_ST_OpenerDifficulty;
 
@@ -964,7 +979,7 @@ internal partial class DNC
             set;
         } =
         [
-            ([7], () => 2),
+            ([7], () => (!DNC_ST_OpenerOption_Peloton ? 3 : 2)),
         ];
 
         public override List<(int[], uint, Func<bool>)> SubstitutionSteps
@@ -995,6 +1010,7 @@ internal partial class DNC
             ([6], () => !DNC_ST_OpenerOption_Peloton),
         ];
 
+        public override Preset Preset => Preset.DNC_ST_BalanceOpener;
         internal override UserData? ContentCheckConfig =>
             DNC_ST_OpenerDifficulty;
 

@@ -21,18 +21,6 @@ public abstract class WrathOpener
     private int openerStep;
     private static WrathOpener? currentOpener;
 
-    private void UpdateOpener(Dalamud.Plugin.Services.IFramework framework)
-    {
-        if (Service.Configuration.PerformanceMode)
-        {
-            CurrentOpener = this;
-            uint _ = 0;
-            CurrentOpener.FullOpener(ref _);
-        }
-
-            
-    }
-
     public void ProgressOpener(uint actionId)
     {
         if (actionId == CurrentOpenerAction || (AllowUpgradeSteps.Any(x => x == OpenerStep) && OriginalHook(CurrentOpenerAction) == actionId))
@@ -51,7 +39,13 @@ public abstract class WrathOpener
 
     public virtual OpenerState CurrentState
     {
-        get => currentState;
+        get => currentState switch
+        {
+            OpenerState.OpenerReady when openerStep > 1 &&
+                                         openerStep <= OpenerActions.Count =>
+                OpenerState.InOpener,
+            _ => currentState,
+        };
         set
         {
             if (value != currentState)
@@ -142,19 +136,29 @@ public abstract class WrathOpener
 
     internal abstract UserData? ContentCheckConfig { get; }
 
-    public bool LevelChecked => Player.Level >= MinOpenerLevel && Player.Level <= MaxOpenerLevel;
+    public bool LevelChecked => Svc.PlayerState.EffectiveLevel >= MinOpenerLevel && Svc.PlayerState.EffectiveLevel <= MaxOpenerLevel;
+
+    public abstract Preset Preset { get; }
+
+    public bool Enabled => Preset.FullLineageEnabled();
 
     public abstract bool HasCooldowns();
 
+    public bool CacheReady = false;
+
     public unsafe bool FullOpener(ref uint actionID)
     {
+        if (IsOccupied())
+            return false;
+
+        if (CurrentOpener != this)
+            SelectOpener();
+
         bool inContent = ContentCheckConfig is UserBoolArray ? ContentCheck.IsInConfiguredContent((UserBoolArray)ContentCheckConfig, ContentCheck.ListSet.BossOnly) : ContentCheckConfig is UserInt ? ContentCheck.IsInConfiguredContent((UserInt)ContentCheckConfig, ContentCheck.ListSet.BossOnly) : false;
-        if (!LevelChecked || OpenerActions.Count == 0 || !inContent)
+        if (!LevelChecked || OpenerActions.Count == 0 || !inContent || !CacheReady)
         {
             return false;
         }
-
-        CurrentOpener = this;
 
         if (CurrentState == OpenerState.OpenerNotReady)
         {
@@ -166,9 +170,9 @@ public abstract class WrathOpener
             }
         }
 
-        if (CurrentState == OpenerState.OpenerReady)
+        if (CurrentState is OpenerState.OpenerReady or OpenerState.InOpener)
         {
-            if (!HasCooldowns() && OpenerStep == 1)
+            if (!ActionWatching.UpdatingActions && !HasCooldowns() && OpenerStep == 1)
             {
                 ResetOpener();
                 return false;
@@ -176,7 +180,7 @@ public abstract class WrathOpener
 
             if (OpenerStep > 1)
             {
-                bool prevStepSkipping = SkipSteps.FindFirst(x => x.Steps.FindFirst(y => y == OpenerStep  - 1, out var t), out var p);
+                bool prevStepSkipping = SkipSteps.FindFirst(x => x.Steps.FindFirst(y => y == OpenerStep - 1, out var t), out var p);
                 if (prevStepSkipping)
                     prevStepSkipping = p.Condition();
 
@@ -193,7 +197,16 @@ public abstract class WrathOpener
                 foreach (var (Step, Condition) in SkipSteps.Where(x => x.Steps.Any(y => y == OpenerStep)))
                 {
                     if (Condition())
+                    {
+                        Svc.Log.Debug($"Skipping from Opener Step {OpenerStep} to {OpenerStep + 1}");
                         OpenerStep++;
+                    }
+
+                    if (OpenerStep > OpenerActions.Count)
+                    {
+                        CurrentState = OpenerState.OpenerFinished;
+                        return false;
+                    }
                 }
 
                 actionID = CurrentOpenerAction = AllowUpgradeSteps.Any(x => x == OpenerStep) ? OriginalHook(OpenerActions[OpenerStep - 1]) : OpenerActions[OpenerStep - 1];
@@ -239,8 +252,8 @@ public abstract class WrathOpener
                 }
 
                 while (OpenerStep > 1 && !ActionReady(CurrentOpenerAction) &&
-                       !SkipSteps.Any(x => x.Steps.Any(y => y == OpenerStep - 1)) &&
-                       ActionWatching.TimeSinceLastAction.TotalSeconds > Math.Max(1.5, Math.Max(GCDTotal, Player.Object.TotalCastTime + 0.2f)))
+                       !SkipSteps.Any(x => x.Steps.Any(y => y == OpenerStep)) &&
+                       ActionWatching.TimeSinceLastAction.TotalSeconds > Math.Max(Service.Configuration.OpenerTimeout, Math.Max(GCDTotal, Player.Object.TotalCastTime + 0.2f)))
                 {
                     if (OpenerStep >= OpenerActions.Count)
                         break;
@@ -296,6 +309,7 @@ public abstract class WrathOpener
             Job.WHM => WHM.Opener(),
             _ => Dummy
         };
+        CurrentOpener?.CacheReady = true;
     }
 
     public static WrathOpener? CurrentOpener
@@ -305,7 +319,6 @@ public abstract class WrathOpener
         {
             if (currentOpener != null && currentOpener != value)
             {
-                Svc.Framework.Update -= currentOpener.UpdateOpener;
                 OnCastInterrupted -= RevertInterruptedCasts;
                 Svc.Condition.ConditionChange -= ResetAfterCombat;
                 Svc.Log.Debug($"Removed update hook {value.GetType()} {currentOpener.GetType()}");
@@ -315,7 +328,6 @@ public abstract class WrathOpener
             {
                 Svc.Log.Debug($"Setting CurrentOpener");
                 currentOpener = value;
-                Svc.Framework.Update += currentOpener.UpdateOpener;
                 OnCastInterrupted += RevertInterruptedCasts;
                 Svc.Condition.ConditionChange += ResetAfterCombat;
             }
@@ -330,11 +342,27 @@ public abstract class WrathOpener
 
     private static void RevertInterruptedCasts(uint interruptedAction)
     {
-        if (CurrentOpener?.CurrentState is OpenerState.OpenerReady)
+        if (CurrentOpener?.CurrentState is OpenerState.OpenerReady or OpenerState.InOpener)
         {
             if (CurrentOpener?.OpenerStep > 1 && interruptedAction == CurrentOpener.PreviousOpenerAction)
                 CurrentOpener.OpenerStep -= 1;
         }
+    }
+
+    public static string OpenerStatus()
+    {
+        if (CurrentOpener is null || CurrentOpener == Dummy || !CurrentOpener.Enabled)
+            return "No valid opener active.";
+
+        return CurrentOpener?.CurrentState switch
+        {
+            OpenerState.OpenerNotReady => $"Opener Not Ready Yet",
+            OpenerState.OpenerReady => "Opener Ready to Start",
+            OpenerState.InOpener => "Opener In Progress",
+            OpenerState.OpenerFinished => "Opener Finished",
+            OpenerState.FailedOpener => "Opener Failed",
+            _ => "Unknown"
+        };
     }
 
     public static WrathOpener Dummy = new DummyOpener();
@@ -345,6 +373,8 @@ public class DummyOpener : WrathOpener
     public override List<uint> OpenerActions { get; set; } = [];
     public override int MinOpenerLevel => 1;
     public override int MaxOpenerLevel => 10000;
+
+    public override Preset Preset { get; }
 
     internal override UserData? ContentCheckConfig => null;
 

@@ -1,4 +1,5 @@
-﻿using WrathCombo.Data;
+﻿using Dalamud.Game.ClientState.Objects.Types;
+using WrathCombo.Data;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 namespace WrathCombo.Combos.PvE;
 
@@ -88,7 +89,8 @@ internal static partial class RoleActions
             ActionReady(SecondWind) && PlayerHealthPercentageHp() <= healthPercent;
 
         public static bool CanArmsLength(int enemyCount, All.Enums.BossAvoidance avoidanceSetting) =>
-            ActionReady(ArmsLength) && NumberOfEnemiesInRange(ArmsLength) >= enemyCount &&
+            ActionReady(ArmsLength) &&
+            NumberOfEnemiesInRange(Tank.Reprisal) >= enemyCount &&
             ((int)avoidanceSetting == (int)All.Enums.BossAvoidance.Off || !InBossEncounter());
     }
 
@@ -173,6 +175,11 @@ internal static partial class RoleActions
             Reprisal = 7535,
             Shirk = 7537;
 
+        public static class Buffs
+        {
+            public const ushort
+            Rampart = 1191;
+        }
         public static class Debuffs
         {
             public const ushort
@@ -191,10 +198,10 @@ internal static partial class RoleActions
         public static bool CanInterject() =>
             ActionReady(Interject) && CanInterruptEnemy();
 
-        public static bool CanReprisal(int healthPercent = 100, int? enemyCount = null, bool checkTargetForDebuff = true) =>
-            (checkTargetForDebuff && !HasStatusEffect(Debuffs.Reprisal, CurrentTarget, true) || !checkTargetForDebuff) &&
+        public static bool CanReprisal(int healthPercent = 100, int? enemyCount = null, bool checkTargetForDebuff = true, IGameObject? target = null) =>
+            (!checkTargetForDebuff || !HasStatusEffect(Debuffs.Reprisal, target ?? CurrentTarget, true)) &&
             (enemyCount is null ? InActionRange(Reprisal) : NumberOfEnemiesInRange(Reprisal) >= enemyCount) &&
-            ActionReady(Reprisal) && PlayerHealthPercentageHp() <= healthPercent && CanApplyStatus(CurrentTarget, Debuffs.Reprisal);
+            ActionReady(Reprisal) && PlayerHealthPercentageHp() <= healthPercent && CanApplyStatus(target ?? CurrentTarget, Debuffs.Reprisal);
 
         public static bool CanShirk() =>
             ActionReady(Shirk);

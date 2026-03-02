@@ -33,7 +33,11 @@ internal partial class SCH
         FairyList = [WhisperingDawn, FeyBlessing, FeyIllumination, Dissipation, Aetherpact, SummonSeraph, Seraphism];
     #endregion
     internal static SCHGauge Gauge => GetJobGauge<SCHGauge>();
-    internal static IBattleChara? AetherPactTarget => Svc.Objects.Where(x => x is IBattleChara chara && chara.StatusList.Any(y => y.StatusId == 1223 && y.SourceObject.GameObjectId == Svc.Buddies.PetBuddy.GameObject.GameObjectId)).Cast<IBattleChara>().FirstOrDefault();
+    internal static IBattleChara? AetherPactTarget =>
+        Svc.Objects.Where(x => x is IBattleChara chara && chara.StatusList
+                   .Any(y => y.StatusId == 1223 && y.SourceObject.GameObjectId == Svc.Buddies.PetBuddy.GameObject.GameObjectId))
+                   .Cast<IBattleChara>()
+                   .FirstOrDefault();
     internal static bool HasAetherflow => Gauge.Aetherflow > 0;
     internal static bool FairyDismissed => Gauge.DismissedFairy > 0;
     internal static bool FairyBusy => JustUsed(WhisperingDawn, 2f) || JustUsed(FeyIllumination, 2f) || JustUsed(FeyBlessing, 2f) || 
@@ -58,15 +62,15 @@ internal partial class SCH
     
     internal static bool RaidwideSacredSoil()
     {
-        return IsEnabled(Preset.SCH_Raidwide_SacredSoil) && ActionReady(SacredSoil) && CanWeave() && RaidWideCasting();
+        return IsEnabled(Preset.SCH_Raidwide_SacredSoil) && ActionReady(SacredSoil) && CanWeave() && GroupDamageIncoming();
     }
     internal static bool RaidwideExpedient()
     {
-        return IsEnabled(Preset.SCH_Raidwide_Expedient) && ActionReady(Expedient) && CanWeave() && RaidWideCasting();
+        return IsEnabled(Preset.SCH_Raidwide_Expedient) && ActionReady(Expedient) && CanWeave() && GroupDamageIncoming();
     }
     internal static bool RaidwideSuccor()
     {
-        return IsEnabled(Preset.SCH_Raidwide_Succor) && ActionReady(OriginalHook(Succor)) && ShieldCheck && RaidWideCasting();
+        return IsEnabled(Preset.SCH_Raidwide_Succor) && ActionReady(OriginalHook(Succor)) && ShieldCheck && GroupDamageIncoming();
     }
     internal static bool RaidwideRecitation()
     {
@@ -93,10 +97,9 @@ internal partial class SCH
     internal static bool NeedsDoT()
     {
         var dotAction = OriginalHook(Bio);
-        var hpThreshold = IsNotEnabled(Preset.SCH_ST_Simple_DPS) &&
-            (SCH_DPS_BioSubOption == 1 || !InBossEncounter())? SCH_DPS_BioOption : 0;
+        var hpThreshold = IsNotEnabled(Preset.SCH_ST_Simple_DPS) ? ComputeHpThreshold(CurrentTarget) : 0;
         BioList.TryGetValue(dotAction, out var dotDebuffID);
-        var dotRefresh = IsNotEnabled(Preset.SCH_ST_Simple_DPS) ? SCH_DPS_BioUptime_Threshold : 2.5;
+        var dotRefresh = IsNotEnabled(Preset.SCH_ST_Simple_DPS) ? SCH_ST_DPS_BioUptime_Threshold : 2.5;
         var dotRemaining = GetStatusEffectRemainingTime(dotDebuffID, CurrentTarget);
 
         return ActionReady(dotAction) &&
@@ -106,13 +109,25 @@ internal partial class SCH
                GetTargetHPPercent() > hpThreshold &&
                dotRemaining <= dotRefresh;
     }
+    
+    internal static int ComputeHpThreshold(IGameObject? x)
+    {
+        if (x is null)
+            return 0;
+        
+        if (InBossEncounter())
+        {
+            return x.IsBoss() ? SCH_ST_DPS_BioBossOption : SCH_ST_DPS_BioBossAddsOption;
+        }
+        return SCH_ST_DPS_BioTrashOption;
+    }
     #endregion
     
     #region Get ST Heals
-    internal static int GetMatchingConfigST(int i, IGameObject? OptionalTarget, out uint action, out bool enabled)
+    internal static int GetMatchingConfigST(int i, IGameObject? target, out uint action, out bool enabled)
     {
-        IGameObject? healTarget = OptionalTarget ?? SimpleTarget.Stack.AllyToHeal;
-        bool tankCheck = healTarget.IsInParty() && healTarget.GetRole() is CombatRole.Tank;
+        IGameObject? healTarget = target ?? SimpleTarget.Stack.AllyToHeal;
+        bool tankCheck = healTarget.IsInParty() && healTarget.Role is CombatRole.Tank;
         bool ShieldCheck = !SCH_ST_Heal_AldoquimOpts[0] || 
                            !HasStatusEffect(Buffs.Galvanize, healTarget, true) || 
                            HasStatusEffect(Buffs.EmergencyTactics);
@@ -145,7 +160,7 @@ internal partial class SCH
                 return SCH_ST_Heal_ProtractionOption;
             case 3:
                 action = Aetherpact;
-                enabled = IsEnabled(Preset.SCH_ST_Heal_Aetherpact) && Gauge.FairyGauge >= SCH_ST_Heal_AetherpactFairyGauge && IsOriginal(Aetherpact) && !FairyBusy;
+                enabled = IsEnabled(Preset.SCH_ST_Heal_Aetherpact) && Gauge.FairyGauge >= SCH_ST_Heal_AetherpactFairyGauge && IsOriginal(Aetherpact) && !FairyBusy && ActionReady(Aetherpact);
                 return SCH_ST_Heal_AetherpactOption;
             case 4:
                 action = OriginalHook(Adloquium);
@@ -288,9 +303,14 @@ internal partial class SCH
             ([13], Dissipation, () => SCH_ST_DPS_OpenerOption == 1)
         ];
 
+        public override List<(int[] Steps, Func<bool> Condition)> SkipSteps { get; set; } =
+        [
+            ([7,9,11,17,19,21], () => Gauge.Aetherflow == 0)
+        ];
+
         public override int MinOpenerLevel => 100;
         public override int MaxOpenerLevel => 109;
-
+        public override Preset Preset => Preset.SCH_ST_ADV_DPS_Balance_Opener;
         internal override UserData ContentCheckConfig => SCH_ST_DPS_OpenerContent;
 
         public override bool HasCooldowns()

@@ -1,6 +1,9 @@
-﻿using FFXIVClientStructs.FFXIV.Client.Game;
+﻿using ECommons.DalamudServices;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using System;
+using WrathCombo.Services.ActionRequestIPC;
 namespace WrathCombo.Data;
+using Action = Lumina.Excel.Sheets.Action;
 
 internal class CooldownData
 {
@@ -9,6 +12,8 @@ internal class CooldownData
     {
         get
         {
+            var a = ActionRequestIPCProvider.GetArtificialCooldown(ActionType.Action, this.ActionID);
+            if(a > 0) return true;
             return CooldownRemaining > 0;
         }
     }
@@ -26,7 +31,15 @@ internal class CooldownData
     public unsafe float BaseCooldownTotal => ActionManager.GetAdjustedRecastTime(ActionType.Action, ActionID) / 1000f;
 
     /// <summary> Gets the cooldown time remaining. </summary>
-    public unsafe float CooldownRemaining => CooldownElapsed == 0 ? 0 : Math.Max(0, CooldownTotal - CooldownElapsed);
+    public unsafe float CooldownRemaining
+    {
+        get
+        {
+            var a = ActionRequestIPCProvider.GetArtificialCooldown(ActionType.Action, this.ActionID);
+            var ret = CooldownElapsed == 0 ? 0 : Math.Max(0, CooldownTotal - CooldownElapsed);
+            return Math.Max(a, ret);
+        }
+    }
 
     /// <summary> Gets the maximum number of charges for an action at the current level. </summary>
     /// <returns> Number of charges. </returns>
@@ -52,7 +65,14 @@ internal class CooldownData
     {
         get
         {
-            return CooldownRemaining % (CooldownTotal / MaxCharges);
+            var a = ActionRequestIPCProvider.GetArtificialCooldown(ActionType.Action, this.ActionID);
+            var ret = CooldownRemaining % (CooldownTotal / MaxCharges);
+            return Math.Max(a, ret);
         }
     }
+
+    /// <summary>
+    /// Base Cooldown taken from the sheets without any adjustments.
+    /// </summary>
+    public float BaseCooldown => Svc.Data.GetExcelSheet<Action>().GetRow(ActionID).Recast100ms;
 }

@@ -11,7 +11,7 @@ internal partial class AST
     {
         #region Options
         public static UserIntArray
-            AST_ST_SimpleHeals_Priority = new("AST_ST_SimpleHeals_Priority", [12,11,10,9,8,6,7,5,4,3,2,1]),
+            AST_ST_SimpleHeals_Priority = new("AST_ST_SimpleHeals_Priority", [13,12,10,6,7,8,9,11,5,4,3,1,2]),
             AST_AoE_SimpleHeals_Priority = new("AST_AoE_SimpleHeals_Priority", [3, 6, 1, 4, 7, 2, 8, 9, 5]);
         
         public static UserInt
@@ -21,7 +21,7 @@ internal partial class AST
             AST_ST_SimpleHeals_Arrow = new("AST_ST_SimpleHeals_Arrow", 70),
             AST_ST_SimpleHeals_Bole = new("AST_ST_SimpleHeals_Bole", 70),
             AST_ST_SimpleHeals_CelestialIntersection = new("AST_ST_SimpleHeals_CelestialIntersection", 70),
-            AST_ST_SimpleHeals_CelestialIntersectionCharges = new ("AST_ST_SimpleHeals_CelestialIntersectionCharges", 1),
+            AST_ST_SimpleHeals_CelestialIntersectionCharges = new ("AST_ST_SimpleHeals_CelestialIntersectionCharges", 0),
             AST_ST_SimpleHeals_EssentialDignity = new("AST_ST_SimpleHeals_EssentialDignity", 70),
             AST_ST_SimpleHeals_Exaltation = new("AST_ST_SimpleHeals_Exaltation", 70),
             AST_ST_SimpleHeals_Esuna = new("AST_ST_SimpleHeals_Esuna", 40),
@@ -32,6 +32,7 @@ internal partial class AST
             AST_ST_SimpleHeals_CelestialOpposition = new("AST_ST_SimpleHeals_CelestialOpposition", 70),
             AST_ST_SimpleHeals_SoloLady = new("AST_ST_SimpleHeals_SoloLady", 70),
             AST_ST_SimpleHeals_EmergencyED_Threshold = new("AST_ST_SimpleHeals_EmergencyED_Threshold", 30),
+            AST_ST_Heals_NeutralSect_Threshold = new("AST_ST_Heals_NeutralSect_Threshold", 70),
             AST_AoE_SimpleHeals_AltMode = new("AST_AoE_SimpleHeals_AltMode", 1),
             AST_AoE_SimpleHeals_LazyLady = new("AST_AoE_SimpleHeals_LazyLady", 80),
             AST_AoE_SimpleHeals_Horoscope = new("AST_AoE_SimpleHeals_Horoscope", 80),
@@ -45,20 +46,24 @@ internal partial class AST
             AST_Mit_ST_EssentialDignityThreshold = new("AST_Mit_ST_EssentialDignityThreshold", 80),
             
             //DPS
+            AST_ST_DPS_Opener_SkipStar = new("AST_ST_DPS_Opener_SkipStar"),
             AST_ST_DPS_DivinationOption = new("AST_ST_DPS_DivinationOption"),
             AST_ST_DPS_AltMode = new("AST_ST_DPS_AltMode"),
             AST_ST_DPS_LucidDreaming = new("AST_ST_DPS_LucidDreaming", 8000),
             AST_ST_DPS_LightSpeedOption = new("AST_ST_DPS_LightSpeedOption"),
-            AST_ST_DPS_CombustOption = new("AST_ST_DPS_CombustOption"),
+            AST_ST_DPS_CombustBossOption = new("AST_ST_DPS_CombustBossOption", 0),
+            AST_ST_DPS_CombustBossAddsOption = new("AST_ST_DPS_CombustBossAddsOption", 80),
+            AST_ST_DPS_CombustTrashOption = new("AST_ST_DPS_CombustTrashOption", 50),
             AST_ST_DPS_DivinationSubOption = new("AST_ST_DPS_DivinationSubOption", 0),
             AST_ST_DPS_Balance_Content = new("AST_ST_DPS_Balance_Content", 1),
-            AST_ST_DPS_CombustSubOption = new("AST_ST_DPS_CombustSubOption", 0),
+            AST_ST_DPS_EarthlyStarSubOption = new("AST_ST_DPS_EarthlyStarSubOption", 0),
             AST_ST_DPS_StellarDetonation_Threshold = new("AST_ST_DPS_StellarDetonation_Threshold", 0),
             AST_ST_DPS_StellarDetonation_SubOption = new("AST_ST_DPS_StellarDetonation_SubOption", 0),
             AST_AOE_LucidDreaming = new("AST_AOE_LucidDreaming", 8000),
             AST_AOE_DivinationSubOption = new("AST_AOE_DivinationSubOption", 0),
             AST_AOE_DivinationOption = new("AST_AOE_DivinationOption"),
             AST_AOE_LightSpeedOption = new("AST_AOE_LightSpeedOption"),
+            AST_AOE_DPS_EarthlyStarSubOption = new("AST_AOE_DPS_EarthlyStarSubOption", 0),
             AST_AOE_DPS_StellarDetonation_Threshold = new("AST_AOE_DPS_StellarDetonation_Threshold", 0),
             AST_AOE_DPS_StellarDetonation_SubOption = new("AST_AOE_DPS_StellarDetonation_SubOption", 0),
             AST_AOE_DPS_MacroCosmos_SubOption = new("AST_AOE_DPS_MacroCosmos_SubOption", 0),
@@ -82,6 +87,7 @@ internal partial class AST
             AST_AoE_SimpleHeals_WeaveHoroscopeHeal = new("AST_AoE_SimpleHeals_WeaveHoroscopeHeal"),
             AST_AoE_SimpleHeals_WeaveStellarDetonation = new("AST_AoE_SimpleHeals_WeaveStellarDetonation"),
             //DPS
+            AST_ST_DPS_CombustUptime_TwoTarget = new("AST_ST_DPS_CombustUptime_TwoTarget"),
             AST_ST_DPS_OverwriteHealCards = new("AST_ST_DPS_OverwriteHealCards"),
             AST_AOE_DPS_OverwriteHealCards = new("AST_AOE_DPS_OverwriteHealCards"),
             AST_QuickTarget_Manuals = new("AST_QuickTarget_Manuals", true);
@@ -90,12 +96,13 @@ internal partial class AST
             AST_ST_DPS_CombustUptime_Threshold = new("AST_ST_DPS_CombustUptime_Threshold");
 
         public static UserBoolArray
-            AST_ST_SimpleHeals_CelestialOppositionOptions = new("AST_ST_SimpleHeals_CelestialOppositionOptions"),
-            AST_ST_SimpleHeals_CollectiveUnconsciousOptions = new("AST_ST_SimpleHeals_CollectiveUnconsciousOptions"),
-            AST_ST_SimpleHeals_SoloLadyOptions = new("AST_ST_SimpleHeals_SoloLadyOptions"),
-            AST_ST_SimpleHeals_ExaltationOptions = new("AST_ST_SimpleHeals_ExaltationOptions"),
-            AST_ST_SimpleHeals_BoleOptions = new("AST_ST_SimpleHeals_BoleOptions"),
-            AST_ST_SimpleHeals_ArrowOptions = new("AST_ST_SimpleHeals_ArrowOptions"),
+            AST_ST_SimpleHeals_CelestialOppositionOptions = new("AST_ST_SimpleHeals_CelestialOppositionOptions", [false, true]),
+            AST_ST_SimpleHeals_CollectiveUnconsciousOptions = new("AST_ST_SimpleHeals_CollectiveUnconsciousOptions", [false, true]),
+            AST_ST_SimpleHeals_SoloLadyOptions = new("AST_ST_SimpleHeals_SoloLadyOptions", [false, true]),
+            AST_ST_Heals_NeutralSectOptions = new("AST_ST_Heals_NeutralSectOptions", [false, true]),
+            AST_ST_SimpleHeals_ExaltationOptions = new("AST_ST_SimpleHeals_ExaltationOptions", [false, true, true]),
+            AST_ST_SimpleHeals_BoleOptions = new("AST_ST_SimpleHeals_BoleOptions", [false, true]),
+            AST_ST_SimpleHeals_ArrowOptions = new("AST_ST_SimpleHeals_ArrowOptions", [false, true]),
             AST_Mit_ST_Options = new("AST_Mit_ST_Options"),
             AST_EarthlyStarOptions = new("AST_EarthlyStarOptions");
 
@@ -107,11 +114,15 @@ internal partial class AST
                 #region DPS
                 case Preset.AST_ST_DPS_Opener:
                     DrawBossOnlyChoice(AST_ST_DPS_Balance_Content);
+                    ImGui.NewLine();
+                    DrawHorizontalRadioButton(AST_ST_DPS_Opener_SkipStar, "Use Earthly Star", "Places Earthly Star in the Opener.", 0);
+                    DrawHorizontalRadioButton(AST_ST_DPS_Opener_SkipStar, "Don't Use Earthly Star", "Does not use Earthly Star in the Opener.", 1);
                     break;
 
                 case Preset.AST_ST_DPS:
-                    DrawRadioButton(AST_ST_DPS_AltMode, $"On {Malefic.ActionName()}", "", 0);
-                    DrawRadioButton(AST_ST_DPS_AltMode, $"On {Combust.ActionName()}", $"Alternative DPS Mode. Leaves {Malefic.ActionName()} alone for pure DPS, becomes {Malefic.ActionName()} when features are on cooldown", 1);
+                    DrawHorizontalRadioButton(AST_ST_DPS_AltMode, $"On {Malefic.ActionName()}", "Applies options to all Malefics.", 0);
+                    DrawHorizontalRadioButton(AST_ST_DPS_AltMode, $"On {Combust.ActionName()}", "Applies options to all Combusts.", 1);
+                    DrawHorizontalRadioButton(AST_ST_DPS_AltMode, $"On {Malefic2.ActionName()}", "Applies options to Malefic 2 only.", 2);
                     break;
 
                 case Preset.AST_DPS_Lucid:
@@ -119,15 +130,13 @@ internal partial class AST
                     break;
 
                 case Preset.AST_ST_DPS_CombustUptime:
-                    DrawSliderInt(0, 50, AST_ST_DPS_CombustOption, "Stop using at Enemy HP %. Set to Zero to disable this check.");
+                    DrawSliderInt(0, 100, AST_ST_DPS_CombustBossOption, "Bosses Only. Stop using at Enemy HP %.");
+                    DrawSliderInt(0, 100, AST_ST_DPS_CombustBossAddsOption, "Boss Encounter Non Bosses. Stop using at Enemy HP %.");
+                    DrawSliderInt(0, 100, AST_ST_DPS_CombustTrashOption, "Non boss encounter. Stop using at Enemy HP %.");
                     ImGui.Indent();
-                    ImGui.TextColored(ImGuiColors.DalamudYellow, "Select what kind of enemies the HP check should be applied to:");
-                    DrawHorizontalRadioButton(AST_ST_DPS_CombustSubOption,
-                        "Non-Bosses", "Only applies the HP check above to non-bosses.\nAllows you to only stop DoTing early when it's not a boss.", 0);
-                    DrawHorizontalRadioButton(AST_ST_DPS_CombustSubOption,
-                        "All Enemies", "Applies the HP check above to all enemies.", 1);
                     DrawRoundedSliderFloat(0, 4, AST_ST_DPS_CombustUptime_Threshold, "Seconds remaining before reapplying the DoT. Set to Zero to disable this check.", digits: 1);
                     ImGui.Unindent();
+                    DrawAdditionalBoolChoice(AST_ST_DPS_CombustUptime_TwoTarget, "Two target dotting", "Will maintain Damage over time spells on two targets if applicable.");
                     break;
 
                 case Preset.AST_DPS_Divination:
@@ -147,6 +156,13 @@ internal partial class AST
                 
                 case Preset.AST_DPS_AutoDraw:
                     DrawAdditionalBoolChoice(AST_ST_DPS_OverwriteHealCards, "Overwrite Non-DPS Cards", "Will draw even if you have healing cards remaining.");
+                    break;
+                
+                case Preset.AST_ST_DPS_EarthlyStar:
+                    DrawHorizontalRadioButton(AST_ST_DPS_EarthlyStarSubOption,
+                        "Normal Targeting", "Follows normal targeting plan", 0);
+                    DrawHorizontalRadioButton(AST_ST_DPS_EarthlyStarSubOption,
+                        "Self Only", "Places at own feet only", 1);
                     break;
                 
                 case Preset.AST_ST_DPS_StellarDetonation:
@@ -183,6 +199,13 @@ internal partial class AST
                     DrawAdditionalBoolChoice(AST_AOE_DPS_OverwriteHealCards, "Overwrite Non-DPS Cards", "Will draw even if you have healing cards remaining.");
                     break;
                 
+                case Preset.AST_AOE_DPS_EarthlyStar:
+                    DrawHorizontalRadioButton(AST_AOE_DPS_EarthlyStarSubOption,
+                        "Normal Targeting", "Follows normal targeting plan", 0);
+                    DrawHorizontalRadioButton(AST_AOE_DPS_EarthlyStarSubOption,
+                        "Self Only", "Places at own feet only", 1);
+                    break;
+                
                 case Preset.AST_AOE_DPS_StellarDetonation:
                     DrawHorizontalRadioButton(AST_AOE_DPS_StellarDetonation_SubOption,
                         "Non-boss Encounters Only", $"Non-Boss Encounters only", 0);
@@ -212,7 +235,7 @@ internal partial class AST
                 #region ST Heals
                 case Preset.AST_ST_Heals:
                     DrawAdditionalBoolChoice(AST_ST_SimpleHeals_IncludeShields, "Include Shields in HP Percent Sliders", "");
-                    break;
+                    break; 
                 
                 case Preset.AST_ST_Heals_Esuna:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_Esuna, "Stop using when below HP %. Set to Zero to disable this check");
@@ -222,19 +245,19 @@ internal partial class AST
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_CelestialIntersection, "Start using when below HP %. Set to 100 to disable this check");
                     DrawSliderInt(0, 1, AST_ST_SimpleHeals_CelestialIntersectionCharges, "How many charges to retain for manual use. Set to 0 to disable this check.");
                     DrawAdditionalBoolChoice(AST_ST_SimpleHeals_WeaveIntersection, "Only Weave", "");
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 1, $"{CelestialIntersection.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 1, $"{CelestialIntersection.ActionName()} Priority: ");
                     break;
                 
                 case Preset.AST_ST_Heals_EssentialDignity:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_EssentialDignity, "Start using when below HP %. Set to 100 to disable this check");
                     DrawAdditionalBoolChoice(AST_ST_SimpleHeals_WeaveDignity, "Only Weave", "");
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 0, $"Standard {EssentialDignity.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 0, $"Standard {EssentialDignity.ActionName()} Priority: ");
                     break;
                 
                 case Preset.AST_ST_Heals_EssentialDignity_Emergency:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_EmergencyED_Threshold, "Start using when below HP %. Set to 100 to disable this check");
                     DrawAdditionalBoolChoice(AST_ST_SimpleHeals_WeaveEmergencyED, "Only Weave", "");
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 11, $"Emergency {EssentialDignity.ActionName()} Priority:");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 11, $"Emergency {EssentialDignity.ActionName()} Priority:");
                     break;
                 
                 case Preset.AST_ST_Heals_Exaltation:
@@ -242,61 +265,68 @@ internal partial class AST
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_ExaltationOptions, "Only Weave", "Will only weave this action.", 3, 0);
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_ExaltationOptions," Not On Bosses", "Will not use in Boss encounters.", 3, 1);
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_ExaltationOptions," Tanks Only", "Will only use on Tanks", 3, 2);
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 2, $"{Exaltation.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 2, $"{Exaltation.ActionName()} Priority: ");
                     break;
                 
                 case Preset.AST_ST_Heals_Bole:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_Bole, "Start using when below HP %. Set to 100 to disable this check");
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_BoleOptions, "Only Weave", "Will only weave this action.", 2, 0);
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_BoleOptions," Tanks Only", "Will only use on Tanks", 2, 1);
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 3, $"{Bole.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 3, $"{Bole.ActionName()} Priority: ");
                     break;
 
                 case Preset.AST_ST_Heals_Arrow:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_Arrow, "Start using when below HP %. Set to 100 to disable this check");
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_ArrowOptions, "Only Weave", "Will only weave this action.", 2, 0);
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_ArrowOptions," Tanks Only", "Will only use on Tanks", 2, 1);
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 4, $"{Arrow.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 4, $"{Arrow.ActionName()} Priority: ");
                     break;
                 
                 case Preset.AST_ST_Heals_Ewer:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_Ewer, "Start using when below HP %. Set to 100 to disable this check");
                     DrawAdditionalBoolChoice(AST_ST_SimpleHeals_WeaveEwer, "Only Weave", "");
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 5, $"{Ewer.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 5, $"{Ewer.ActionName()} Priority: ");
                     break;
                 
                 case Preset.AST_ST_Heals_Spire:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_Spire, "Start using when below HP %. Set to 100 to disable this check");
                     DrawAdditionalBoolChoice(AST_ST_SimpleHeals_WeaveSpire, "Only Weave", "");
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 6, $"{Spire.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 6, $"{Spire.ActionName()} Priority: ");
                     break;
                 
                 case Preset.AST_ST_Heals_AspectedBenefic:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_AspectedBeneficHigh, "Start using when below HP %. Set to 100 to disable this check");
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_AspectedBeneficLow, "Stop using when below set percentage");
                     DrawSliderInt(0, 15, AST_ST_SimpleHeals_AspectedBeneficRefresh, "Seconds remaining before reapplying (0 = Do not reapply early)");
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 7, $"{AspectedBenefic.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 7, $"{AspectedBenefic.ActionName()} Priority: ");
                     break;
                 
                 case Preset.AST_ST_Heals_CelestialOpposition:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_CelestialOpposition, "Start using when below HP %. Set to 100 to disable this check");
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_CelestialOppositionOptions,"Only Weave", "Will only weave this action.", 2, 0);
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_CelestialOppositionOptions," Not On Bosses", "Will not use on ST in Boss encounters.", 2, 1);
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 8, $"{CelestialOpposition.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 8, $"{CelestialOpposition.ActionName()} Priority: ");
                     break;
                 
                 case Preset.AST_ST_Heals_CollectiveUnconscious:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_CollectiveUnconscious, "Start using when below HP %. Set to 100 to disable this check");
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_CollectiveUnconsciousOptions,"Only Weave", "Will only weave this action.", 2, 0);
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_CollectiveUnconsciousOptions," Not On Bosses", "Will not use on ST in Boss encounters.", 2, 1);
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 9, $"{CollectiveUnconscious.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 9, $"{CollectiveUnconscious.ActionName()} Priority: ");
                     break;
                 
                 case Preset.AST_ST_Heals_SoloLady:
                     DrawSliderInt(0, 100, AST_ST_SimpleHeals_SoloLady, "Start using when below HP %. Set to 100 to disable this check");
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_SoloLadyOptions,"Only Weave", "Will only weave this action.", 2, 0);
                     DrawHorizontalMultiChoice(AST_ST_SimpleHeals_SoloLadyOptions," Not On Bosses", "Will not use on ST in Boss encounters.", 2, 1);
-                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 12, 10, $"{LadyOfCrown.ActionName()} Priority: ");
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 10, $"{LadyOfCrown.ActionName()} Priority: ");
+                    break;
+                
+                case Preset.AST_ST_Heals_NeutralSect:
+                    DrawSliderInt(0, 100, AST_ST_Heals_NeutralSect_Threshold, "Start using when below HP %. Set to 100 to disable this check");
+                    DrawHorizontalMultiChoice(AST_ST_Heals_NeutralSectOptions,"Only Weave", "Will only weave this action.", 2, 0);
+                    DrawHorizontalMultiChoice(AST_ST_Heals_NeutralSectOptions," Not On Bosses", "Will not use on ST in Boss encounters.", 2, 1);
+                    DrawPriorityInput(AST_ST_SimpleHeals_Priority, 13, 12, $"{NeutralSect.ActionName()} Priority: ");
                     break;
                 
                 
@@ -379,6 +409,7 @@ internal partial class AST
                     DrawRadioButton(AST_QuickTarget_Override, "Hard Target Override", "Overrides selection with hard target, if you have one that is in range and does not have damage down or rez sickness.", 1, descriptionAsTooltip: true);
                     DrawRadioButton(AST_QuickTarget_Override, "UI MouseOver Override", "Overrides selection with UI MouseOver target, if you have one that is in range and does not have damage down or rez sickness.", 2, descriptionAsTooltip: true);
                     DrawRadioButton(AST_QuickTarget_Override, "Any MouseOver Override", "Overrides selection with UI or Nameplate or Model MouseOver target (in that order), if you have one that is in range and does not have damage down or rez sickness.", 3, descriptionAsTooltip: true);
+                    DrawRadioButton(AST_QuickTarget_Override, "Focus Target Override (when correct role)", "Overrides selection with your Focus Target, if they are within range and do not have damage down or rez sickness, and are melee for Balance or ranged for Spear (including supports).", 4, descriptionAsTooltip: true);
                     break;
                 
                 case Preset.AST_Retargets_EarthlyStar:

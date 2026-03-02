@@ -1,6 +1,6 @@
 #region
 
-using System.Linq;
+using Dalamud.Game.ClientState.Objects.Types;
 using WrathCombo.Core;
 using WrathCombo.CustomComboNS;
 using WrathCombo.Data;
@@ -35,6 +35,25 @@ internal partial class DRK : Tank
                 return newAction;
 
             return HardSlash;
+        }
+    }
+    
+    internal class DRK_AoE_BasicCombo : CustomCombo
+    {
+        protected internal override Preset Preset => Preset.DRK_AoE_BasicCombo;
+
+        protected override uint Invoke(uint actionID)
+        {
+            if (actionID is not StalwartSoul)
+                return actionID;
+            
+            const Combo comboFlags = Combo.AoE | Combo.Basic;
+            var newAction = Unleash;
+
+            if (TryGetAction<Core>(comboFlags, ref newAction))
+                return newAction;
+
+            return Unleash;
         }
     }
     
@@ -95,15 +114,7 @@ internal partial class DRK : Tank
                 HasBattleTarget())
                 return Unmend;
 
-            var inMitigationContent =
-                ContentCheck.IsInConfiguredContent(
-                    DRK_ST_MitDifficulty,
-                    DRK_ST_MitDifficultyListSet
-                );
-
-            if (IsEnabled(Preset.DRK_ST_Mitigation) &&
-                inMitigationContent &&
-                TryGetAction<Mitigation>(comboFlags, ref newAction))
+            if (TryGetAction<Mitigation>(comboFlags, ref newAction))
                 return newAction;
 
             var specialManaOnly = true;
@@ -207,9 +218,8 @@ internal partial class DRK : Tank
             if (IsEnabled(Preset.DRK_AoE_CDs) &&
                 TryGetAction<Cooldown>(comboFlags, ref newAction))
                 return newAction;
-
-            if (IsEnabled(Preset.DRK_AoE_Mitigation) &&
-                TryGetAction<Mitigation>(comboFlags, ref newAction))
+            
+            if (TryGetAction<Mitigation>(comboFlags, ref newAction))
                 return newAction;
 
             if (IsEnabled(Preset.DRK_AoE_Spenders) &&
@@ -333,7 +343,7 @@ internal partial class DRK : Tank
                 ))
                 return LivingDead;
 
-            foreach (var priority in DRK_Mit_Priorities.Items.OrderBy(x => x))
+            foreach (var priority in DRK_Mit_Priorities.OrderBy(x => x))
             {
                 var index = DRK_Mit_Priorities.IndexOf(priority);
                 if (CheckMitigationConfigMeetsRequirements(index, out var action))
@@ -348,10 +358,15 @@ internal partial class DRK : Tank
     {
         protected internal override Preset Preset => Preset.DRK_Mit_Party;
 
-        protected override uint Invoke(uint action) =>
-            action is not DarkMissionary
-                ? action
-                : ActionReady(Role.Reprisal) ? Role.Reprisal : action;
+        protected override uint Invoke(uint actionID)
+        {
+            if (actionID is not DarkMissionary) return actionID;
+
+            if (Role.CanReprisal())
+                return Role.Reprisal;
+
+            return actionID;
+        }
     }
 
     #endregion
@@ -374,7 +389,7 @@ internal partial class DRK : Tank
 
             if (target is not null &&
                 CanApplyStatus(target, Buffs.BlackestNightShield))
-                return actionID.Retarget(target, dontCull: true);
+                return actionID.Retarget(target);
 
             return actionID;
         }
@@ -403,9 +418,34 @@ internal partial class DRK : Tank
 
             if (target is not null &&
                 CanApplyStatus(target, Buffs.Oblation))
-                return actionID.Retarget(target, dontCull: true);
+                return actionID.Retarget(target);
 
             return actionID;
+        }
+    }
+    internal class DRK_RetargetShadowstride: CustomCombo
+    {
+        protected internal override Preset Preset => Preset.DRK_RetargetShadowstride;
+
+        protected override uint Invoke(uint actionID)
+        {
+            if (actionID is not Shadowstride)
+                return actionID;
+            
+            IGameObject? target =
+                // Mouseover
+                SimpleTarget.Stack.MouseOver.IfHostile()
+                    .IfWithinRange(Shadowstride.ActionRange()) ??
+
+                // Nearest Enemy to Mouseover
+                SimpleTarget.NearestEnemyToTarget(SimpleTarget.Stack.MouseOver,
+                    Shadowstride.ActionRange()) ??
+    
+                CurrentTarget.IfHostile().IfWithinRange(Shadowstride.ActionRange());
+            
+            return target != null
+                ? actionID.Retarget(target)
+                : actionID;
         }
     }
 

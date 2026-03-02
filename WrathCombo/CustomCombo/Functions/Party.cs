@@ -50,7 +50,8 @@ internal abstract partial class CustomComboFunctions
                     {
                         foreach (var p in InfoProxyPartyMember.Instance()->CharDataSpan)
                         {
-                            if (p.Sort == i - 1)
+                            var contentId = chara.Character()->ContentId;
+                            if (p.ContentId == contentId)
                                 existingMember.NPCClassJob = p.Job;
                         }
                     }
@@ -66,8 +67,9 @@ internal abstract partial class CustomComboFunctions
                     {
                         foreach (var p in InfoProxyPartyMember.Instance()->CharDataSpan)
                         {
-                            if (p.Sort == i - 1)
-                                wmember.NPCClassJob = p.Job;
+                            var contentId = chara.Character()->ContentId;
+                            if (p.ContentId == contentId)
+                                existingMember.NPCClassJob = p.Job;
                         }
                     }
                     _partyList.Add(wmember);
@@ -167,7 +169,7 @@ internal abstract partial class CustomComboFunctions
         return partyCount == 0 ? 0 : (float)buffCount / partyCount * 100f;
     }
 
-    public static bool PartyInCombat() => PartyEngageDuration().Ticks > 0;
+    public static bool PartyInCombat() => PartyInCombatCheck;
 }
 
 public enum AllianceGroup
@@ -190,8 +192,8 @@ public class WrathPartyMember
         ? realJob
         : BattleChara?.ClassJob.Value ?? ExcelJobHelper.GetJobById(0);
 
-    public IBattleChara? BattleChara => Svc.Objects.FirstOrDefault(x => x.GameObjectId == GameObjectId) as IBattleChara;
-    public IGameObject? GameObject => Svc.Objects.FirstOrDefault(x => x.GameObjectId == GameObjectId);
+    public IBattleChara? BattleChara => Svc.Objects.SearchById(GameObjectId) as IBattleChara;
+    public IGameObject? GameObject => Svc.Objects.SearchById(GameObjectId);
     public Dictionary<ushort, long> BuffsGainedAt = new();
 
     private uint _currentHP;

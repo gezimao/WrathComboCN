@@ -2,23 +2,25 @@
 
 using ECommons;
 using ECommons.DalamudServices;
+using ECommons.ExcelServices;
 using ECommons.GameFunctions;
 using ECommons.GameHelpers;
-using ECommons.ExcelServices;
 using ECommons.Logging;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using WrathCombo.AutoRotation;
+using WrathCombo.API.Enum;
 using WrathCombo.Core;
-using WrathCombo.CustomComboNS.Functions;
+using WrathCombo.CustomComboNS;
 using WrathCombo.Data;
+using WrathCombo.Data.Conflicts;
 using WrathCombo.Extensions;
 using WrathCombo.Services;
 using WrathCombo.Window;
 using WrathCombo.Window.Tabs;
 using static ECommons.ExcelServices.ExcelJobHelper;
+using static WrathCombo.Core.Configuration;
 
 #endregion
 
@@ -107,17 +109,29 @@ public partial class WrathCombo
             case "dbg": // unlisted
             case "debugtab": // unlisted
                 HandleOpenCommand(tab: OpenWindow.Debug, forceOpen: true); break;
-            
+
             // "IPromiseIWillDoMyJobQuestsLater" will be accepted
             // ReSharper disable once StringLiteralTypo
             case "ipromiseiwilldomyjobquestslater": // unlisted
                 HandleJobStoneCheckCommand(); break;
 
+            case "opener":
+                OutputOpenerStatus(); break;
             default:
                 HandleOpenCommand(argumentParts); break;
         }
+    }
 
-        Service.Configuration.Save();
+    private void OutputOpenerStatus()
+    {
+        Svc.Log.Debug($"{WrathOpener.CurrentOpener.Enabled}");
+        if (WrathOpener.CurrentOpener is not null && WrathOpener.CurrentOpener != WrathOpener.Dummy && WrathOpener.CurrentOpener.Enabled)
+        {
+            var status = WrathOpener.OpenerStatus();
+            DuoLog.Information($"Opener status: {status}");
+        }
+        else
+            DuoLog.Warning("No valid opener active.");
     }
 
     /// <summary>
@@ -214,7 +228,7 @@ public partial class WrathCombo
         }
 
         // Give the correct method for the action
-        Func<Preset, bool, bool> method = action switch
+        Func<Preset, ConfigChangeSource?, bool> method = action switch
         {
             toggle => PresetStorage.TogglePreset,
             set => PresetStorage.EnablePreset,
@@ -232,7 +246,7 @@ public partial class WrathCombo
         else
         {
             var usablePreset = (Preset)preset!;
-            method(usablePreset, false);
+            method(usablePreset, ConfigChangeSource.Command);
 
             if (action == toggle)
                 action =
@@ -245,8 +259,9 @@ public partial class WrathCombo
                 ? " " + OptionControlledByIPC
                 : "";
 
-            DuoLog.Information(
-                $"{usablePreset.Attributes().CustomComboInfo.Name} {action} {ctrlText}");
+            if (!Service.Configuration.SuppressSetCommands && ctrlText == "")
+                DuoLog.Information(
+                    $"{usablePreset.Attributes().CustomComboInfo.Name} {action} {ctrlText}");
         }
     }
 
@@ -439,37 +454,37 @@ public partial class WrathCombo
         {
             var role = argument[2].ToLowerInvariant();
             var mode = argument[3];
-            
+
             switch (role)
             {
                 case "damage" when Enum.TryParse<DPSRotationMode>(mode, true, out var dpsMode):
-                {
-                    Service.Configuration.RotationConfig.DPSRotationMode = dpsMode;
-                    Service.Configuration.Save();
-                
-                    var dpsControlled = P.UIHelper.AutoRotationConfigControlled("DPSRotationMode") is not null;
-                    var ctrlText = dpsControlled ? " " + OptionControlledByIPC : "";
-                
-                    DuoLog.Information($"Damage targeting mode set to: {dpsMode.ToString().Replace('_', ' ')}{ctrlText}");
-                    return;
-                }
+                    {
+                        Service.Configuration.RotationConfig.DPSRotationMode = dpsMode;
+                        Service.Configuration.Save();
+
+                        var dpsControlled = P.UIHelper.AutoRotationConfigControlled("DPSRotationMode") is not null;
+                        var ctrlText = dpsControlled ? " " + OptionControlledByIPC : "";
+
+                        DuoLog.Information($"Damage targeting mode set to: {dpsMode.ToString().Replace('_', ' ')}{ctrlText}");
+                        return;
+                    }
                 case "healer" when Enum.TryParse<HealerRotationMode>(mode, true, out var healerMode):
-                {
-                    Service.Configuration.RotationConfig.HealerRotationMode = healerMode;
-                    Service.Configuration.Save();
-                
-                    var healerControlled = P.UIHelper.AutoRotationConfigControlled("HealerRotationMode") is not null;
-                    var ctrlText = healerControlled ? " " + OptionControlledByIPC : "";
-                
-                    DuoLog.Information($"Healer targeting mode set to: {healerMode.ToString().Replace('_', ' ')}{ctrlText}");
-                    return;
-                }
+                    {
+                        Service.Configuration.RotationConfig.HealerRotationMode = healerMode;
+                        Service.Configuration.Save();
+
+                        var healerControlled = P.UIHelper.AutoRotationConfigControlled("HealerRotationMode") is not null;
+                        var ctrlText = healerControlled ? " " + OptionControlledByIPC : "";
+
+                        DuoLog.Information($"Healer targeting mode set to: {healerMode.ToString().Replace('_', ' ')}{ctrlText}");
+                        return;
+                    }
                 default:
                     DuoLog.Error("Usage: /wrath auto target <damage|healer> <mode>");
                     return;
             }
         }
-        
+
         // Handle Normal Toggling of Auto-Rotation
         var toggledVal = !Service.Configuration.RotationConfig.Enabled;
         var newVal = argument.Length > 1
@@ -496,11 +511,12 @@ public partial class WrathCombo
         var stateControlled =
             P.UIHelper.AutoRotationStateControlled() is not null;
 
-        DuoLog.Information(
-            "Auto-Rotation set to "
-            + (Service.Configuration.RotationConfig.Enabled ? "ON" : "OFF")
-            + (stateControlled ? " " + OptionControlledByIPC : "")
-        );
+        if (!Service.Configuration.SuppressAutorotCommand)
+            DuoLog.Information(
+                "Auto-Rotation set to "
+                + (Service.Configuration.RotationConfig.Enabled ? "ON" : "OFF")
+                + (stateControlled ? " " + OptionControlledByIPC : "")
+            );
     }
 
     /// <summary>
@@ -538,6 +554,7 @@ public partial class WrathCombo
         if (Service.Configuration.IgnoredNPCs.All(x => x.Key != target.BaseId))
         {
             Service.Configuration.IgnoredNPCs.Add(target.BaseId, target.GetNameId());
+            Service.Configuration.Save();
 
             DuoLog.Information(
                 $"Successfully added {target.Name} (ID: {target.BaseId}) to ignored list");
@@ -552,6 +569,8 @@ public partial class WrathCombo
     ///     <c>&lt;blank&gt;</c> - current job<br />
     ///     <c>&lt;job abbr&gt;</c> - that job<br />
     ///     <c>all</c> - all jobs<br />
+    ///     <c>path</c> - prints the path to the debug file<br />
+    ///     <c>string</c> - puts the debug string on the clipboard<br />
     /// </value>
     /// <param name="argument">
     ///     The job abbreviation to provide the debug file for (or "all").<br />
@@ -606,7 +625,7 @@ public partial class WrathCombo
                         //Retrieve final ClassJob
                         job = jobSearch.GetJob().GetUpgradedJob().GetData();
 
-                        if (job.Value.RowId != Player.JobId)
+                        if (job.Value.RowId != Player.ClassJob.RowId)
                             DuoLog.Warning($"You are not on {job.Value.Name()}");
                     }
                 }
@@ -627,7 +646,10 @@ public partial class WrathCombo
 
             // Request a debug file, with null, or the entered Job
             // (if converted successfully)
-            DebugFile.MakeDebugFile(job);
+            Svc.Framework.RunOnTick(ConflictingPluginsChecks.ForceRunChecks)
+                .ContinueWith(_ =>
+                    Svc.Framework.RunOnTick(() =>
+                        DebugFile.MakeDebugFile(job)));
         }
         catch (Exception ex)
         {
@@ -675,7 +697,7 @@ public partial class WrathCombo
     ///         </item>
     ///         <item>
     ///             Open to current job setting
-    ///             (if <see cref="PluginConfiguration.OpenToCurrentJob" />)
+    ///             (if <see cref="Configuration.OpenToCurrentJob" />)
     ///         </item>
     ///         <item>
     ///             Open to specified job
@@ -724,7 +746,7 @@ public partial class WrathCombo
             // Skip trying to process arguments
             return;
         }
-        
+
         // Open to specified job
         var jobAbbrev = argument[0];
 
@@ -733,14 +755,14 @@ public partial class WrathCombo
             ConfigWindow.IsOpen = true;
             ConfigWindow.OpenWindow = OpenWindow.PvE;
             FeaturesWindow.OpenJob = job.GetJob();
-        } 
+        }
         else
         {
             DuoLog.Error($"{argument[0]} is not a correct job abbreviation.");
             return;
         }
 
-        
+
     }
 
     /// <summary>
@@ -756,7 +778,7 @@ public partial class WrathCombo
             DuoLog.Information("Job Stone Checking is already disabled.");
             return;
         }
-        
+
         ActionReplacer.DisableJobCheck = true;
         DuoLog.Information("Job Stone Checking has been disabled for this session.");
         DuoLog.Warning("Please do not play Classes with other people, " +

@@ -1,4 +1,5 @@
 using ECommons.ImGuiMethods;
+using System.Numerics;
 using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Extensions;
 using WrathCombo.Window.Functions;
@@ -13,48 +14,51 @@ internal partial class SAM
         {
             switch (preset)
             {
+                #region ST
+
                 case Preset.SAM_ST_Opener:
+                    ImGui.Indent();
                     DrawBossOnlyChoice(SAM_Balance_Content);
-                    ImGui.NewLine();
+                    ImGui.Unindent();
+
+                    ImGuiEx.Spacing(new Vector2(0, 10));
+
                     DrawSliderInt(0, 13, SAM_Opener_PrePullDelay,
-                        $"Delay from first {MeikyoShisui.ActionName()} to next step. (seconds)\nDelay is enforced by replacing your button with Savage Blade.");
+                        $"Seconds to delay from first {MeikyoShisui.ActionName()} to next step (hover for details)", 75f.Scale());
+
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Delay is enforced by replacing your button with Savage Blade.");
+
+                    ImGuiEx.Spacing(new Vector2(0, 10));
+                    ImGui.NewLine();
+
+                    DrawHorizontalRadioButton(SAM_Opener_IncludeGyoten,
+                        $"Include 2x {Gyoten.ActionName()}", $"Includes both usages of {Gyoten.ActionName()}", 0);
+
+                    DrawHorizontalRadioButton(SAM_Opener_IncludeGyoten,
+                        "Skip Both", $"Skips both usages of {Gyoten.ActionName()} in the opener.", 1);
+
+                    DrawHorizontalRadioButton(SAM_Opener_IncludeGyoten,
+                        "Skip First", $"Skips first usage of {Gyoten.ActionName()} in the opener, keeps the second.", 2);
+
+                    DrawHorizontalRadioButton(SAM_Opener_IncludeGyoten,
+                        "Skip Second", $"Skips second usage of {Gyoten.ActionName()} in the opener, keeps the first.", 3);
                     break;
 
                 case Preset.SAM_ST_CDs_UseHiganbana:
-                    ImGui.Dummy(new(12f.Scale(), 0));
-                    ImGui.SameLine();
-                    DrawHorizontalRadioButton(SAM_ST_HiganbanaBossOption,
-                        "All Enemies", $"Uses {Higanbana.ActionName()} regardless of targeted enemy type.", 0);
+                    DrawSliderInt(0, 100, SAM_ST_HiganbanaBossOption,
+                        "Bosses Only. Stop using at Enemy HP %.");
 
-                    DrawHorizontalRadioButton(SAM_ST_HiganbanaBossOption,
-                        "Bosses Only", $"Only uses {Higanbana.ActionName()} when the targeted enemy is a boss.", 1);
+                    DrawSliderInt(0, 100, SAM_ST_HiganbanaBossAddsOption,
+                        "Boss Encounter Non Bosses. Stop using at Enemy HP %.");
 
-                    DrawSliderInt(0, 10, SAM_ST_HiganbanaHPThreshold,
-                        $"Stop using {Higanbana.ActionName()} on targets below this HP % (0% = always use).");
+                    DrawSliderInt(0, 100, SAM_ST_HiganbanaTrashOption,
+                        "Non boss encounter. Stop using at Enemy HP %.");
 
+                    ImGui.Indent();
                     DrawSliderInt(0, 15, SAM_ST_HiganbanaRefresh,
                         $"Seconds remaining before reapplying {Higanbana.ActionName()}. Set to Zero to disable this check.");
-                    break;
-
-                case Preset.SAM_ST_CDs_MeikyoShisui:
-                    DrawHorizontalRadioButton(SAM_ST_MeikyoLogic,
-                        "Use Simple Logic", $"Uses {MeikyoShisui.ActionName()} when u have 3 sens.", 0);
-
-                    DrawHorizontalRadioButton(SAM_ST_MeikyoLogic,
-                        "Use The Balance Logic", "Uses The Balance logic.", 1);
-
-                    if (SAM_ST_MeikyoLogic == 1)
-                    {
-                        ImGui.Dummy(new(12f.Scale(), 0));
-                        ImGui.NewLine();
-
-                        DrawHorizontalRadioButton(SAM_ST_MeikyoBossOption,
-                            "All content", "Uses The Balance logic regardless of content.", 0);
-
-                        DrawHorizontalRadioButton(SAM_ST_MeikyoBossOption,
-                            "Only in Boss encounters", $"Only uses The Balance logic when in Boss encounters." +
-                                                       $"\nWill use Meikyo every minute regardless of sen count outside of boss encounters.", 1);
-                    }
+                    ImGui.Unindent();
                     break;
 
                 case Preset.SAM_ST_CDs_Senei:
@@ -68,12 +72,18 @@ internal partial class SAM
                     break;
 
                 case Preset.SAM_ST_Shinten:
-                    DrawSliderInt(25, 85, SAM_ST_KenkiOvercapAmount,
+                    DrawSliderInt(50, 85, SAM_ST_KenkiOvercapAmount,
                         "Set the Kenki overcap amount for ST combos.");
 
                     DrawSliderInt(0, 100, SAM_ST_ExecuteThreshold,
                         "HP percent threshold to not save Kenki");
                     break;
+
+                case Preset.SAM_ST_CDs_MeikyoShisui:
+                    DrawSliderInt(0, 100, SAM_ST_MeikyoExecuteThreshold,
+                        "HP percent threshold to use Meikyo on cooldown.");
+                    break;
+
 
                 case Preset.SAM_ST_GekkoCombo:
                     DrawAdditionalBoolChoice(SAM_Gekko_KenkiOvercap,
@@ -94,6 +104,12 @@ internal partial class SAM
                     break;
 
                 case Preset.SAM_ST_YukikazeCombo:
+                    DrawHorizontalRadioButton(SAM_ST_YukikazeCombo_Prio,
+                        "Prio sen generation", "Will prioritise generating all 3 sens before checking buffs.", 0);
+
+                    DrawHorizontalRadioButton(SAM_ST_YukikazeCombo_Prio,
+                        "Prio buff upkeep", "Will prioritise having both buffs before finishing sens.", 1);
+
                     DrawAdditionalBoolChoice(SAM_Yukaze_Gekko,
                         "Add Gekko Combo", "Adds Gekko combo when applicable.");
 
@@ -106,6 +122,11 @@ internal partial class SAM
                     if (SAM_Yukaze_KenkiOvercap)
                         DrawSliderInt(25, 100, SAM_Yukaze_KenkiOvercapAmount,
                             "Kenki Amount", sliderIncrement: SliderIncrements.Fives);
+                    break;
+
+                case Preset.SAM_ST_TrueNorth:
+                    DrawSliderInt(0, 1, SAM_ST_ManualTN,
+                        "How many charges to keep for manual usage.");
                     break;
 
                 case Preset.SAM_ST_Meditate:
@@ -121,6 +142,10 @@ internal partial class SAM
                     DrawSliderInt(0, 100, SAM_STBloodbathHPThreshold,
                         $"{Role.Bloodbath.ActionName()} HP percentage threshold");
                     break;
+
+                #endregion
+
+                #region AoE
 
                 case Preset.SAM_AoE_Kyuten:
                     DrawSliderInt(25, 85, SAM_AoE_KenkiOvercapAmount,
@@ -155,26 +180,46 @@ internal partial class SAM
                     DrawSliderInt(0, 100, SAM_AoEBloodbathHPThreshold,
                         $"{Role.Bloodbath.ActionName()} HP percentage threshold");
                     break;
+
+                #endregion
+
+                #region Misc
+
+                case Preset.SAM_OgiShoha:
+                    DrawAdditionalBoolChoice(SAM_OgiShohaZanshin,
+                        "Add Zanshin", "Add Zanshin when you ready.");
+                    break;
+
+                #endregion
             }
         }
 
         #region Variables
 
         public static UserInt
+
+            //ST
             SAM_Balance_Content = new("SAM_Balance_Content", 1),
             SAM_Opener_PrePullDelay = new("SAM_Opener_PrePullDelay", 13),
-            SAM_ST_MeikyoLogic = new("SAM_ST_MeikyoLogic", 1),
-            SAM_ST_HiganbanaBossOption = new("SAM_ST_Higanbana_Suboption", 1),
-            SAM_ST_MeikyoBossOption = new("SAM_ST_Meikyo_Suboption", 1),
-            SAM_ST_HiganbanaHPThreshold = new("SAM_ST_Higanbana_HP_Threshold", 0),
+            SAM_Opener_IncludeGyoten = new("SAM_Opener_IncludeGyoten"),
+            SAM_ST_HiganbanaBossOption = new("SAM_ST_HiganbanaBossOption"),
+            SAM_ST_HiganbanaBossAddsOption = new("SAM_ST_HiganbanaBossAddsOption", 25),
+            SAM_ST_HiganbanaTrashOption = new("SAM_ST_HiganbanaTrashOption", 100),
             SAM_ST_HiganbanaRefresh = new("SAM_ST_Higanbana_Refresh", 15),
             SAM_ST_KenkiOvercapAmount = new("SAM_ST_KenkiOvercapAmount", 65),
-            SAM_ST_ExecuteThreshold = new("SAM_ST_ExecuteThreshold", 1),
+            SAM_ST_YukikazeCombo_Prio = new("SAM_ST_YukikazeCombo_Prio", 1),
+            SAM_ST_ExecuteThreshold = new("SAM_ST_ExecuteThreshold", 5),
+            SAM_ST_MeikyoExecuteThreshold = new("SAM_ST_MeikyoExecuteThreshold", 5),
+            SAM_ST_ManualTN = new("SAM_ST_ManualTN"),
             SAM_STSecondWindHPThreshold = new("SAM_STSecondWindThreshold", 40),
             SAM_STBloodbathHPThreshold = new("SAM_STBloodbathThreshold", 30),
+
+            //AoE
             SAM_AoE_KenkiOvercapAmount = new("SAM_AoE_KenkiOvercapAmount", 50),
             SAM_AoESecondWindHPThreshold = new("SAM_AoESecondWindThreshold", 40),
             SAM_AoEBloodbathHPThreshold = new("SAM_AoEBloodbathThreshold", 30),
+
+            //Misc
             SAM_Gekko_KenkiOvercapAmount = new("SAM_Gekko_KenkiOvercapAmount", 65),
             SAM_Kasha_KenkiOvercapAmount = new("SAM_Kasha_KenkiOvercapAmount", 65),
             SAM_Yukaze_KenkiOvercapAmount = new("SAM_Yukaze_KenkiOvercapAmount", 65),
@@ -191,12 +236,12 @@ internal partial class SAM
             SAM_ST_CDs_Guren = new("SAM_ST_CDs_Guren"),
             SAM_ST_CDs_OgiNamikiri_Movement = new("SAM_ST_CDs_OgiNamikiri_Movement"),
             SAM_Oka_KenkiOvercap = new("SAM_Oka_KenkiOvercap"),
-            SAM_Mangetsu_KenkiOvercap = new("SAM_Mangetsu_KenkiOvercap");
+            SAM_Mangetsu_KenkiOvercap = new("SAM_Mangetsu_KenkiOvercap"),
+            SAM_OgiShohaZanshin = new("SAM_OgiShohaZanshin");
 
         public static UserFloat
             SAM_ST_MeditateTimeStill = new("SAM_ST_MeditateTimeStill", 2.5f);
 
         #endregion
-
     }
 }

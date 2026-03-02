@@ -2,6 +2,7 @@
 using Lumina.Excel.Sheets;
 using System;
 using WrathCombo.Data;
+using WrathCombo.Extensions;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 using static WrathCombo.Combos.PvE.OccultCrescent.Config;
 using ContentHelper = ECommons.GameHelpers;
@@ -21,7 +22,6 @@ internal partial class OccultCrescent
     private static bool InCombatNow => InCombat();
     private static bool CanWeaveNow => CanWeave();
     private static bool HasTargetNow => HasBattleTarget();
-    private static float TargetDistance => GetTargetDistance();
     private static float TargetHP => GetTargetHPPercent();
     private static float PlayerHP => PlayerHealthPercentageHp();
     private static uint PlayerMP => LocalPlayer.CurrentMp;
@@ -46,6 +46,9 @@ internal partial class OccultCrescent
         if (TryGetOracleAction(ref actionID)) return true;
         if (TryGetCannoneerAction(ref actionID)) return true;
         if (TryGetGeomancerAction(ref actionID)) return true;
+        if (TryGetDancerAction(ref actionID)) return true;
+        if (TryGetMysticKnightAction(ref actionID)) return true;
+        if (TryGetGladiatorAction(ref actionID)) return true;
 
         return false;
     }
@@ -127,14 +130,14 @@ internal partial class OccultCrescent
         }
 
         if (IsEnabledAndUsable(Preset.Phantom_Monk_PhantomKick, PhantomKick) &&
-            !IsMovingNow && TargetDistance <= 15f)
+            !IsMovingNow && InActionRange(PhantomKick))
         {
             actionID = PhantomKick; // damage buff + dash
             return true;
         }
 
         if (IsEnabledAndUsable(Preset.Phantom_Monk_OccultCounter, OccultCounter) &&
-            TargetDistance <= 6f)
+            InActionRange(OccultCounter))
         {
             actionID = OccultCounter; // counter-attack
             return true;
@@ -165,7 +168,7 @@ internal partial class OccultCrescent
             return true;
         }
 
-        if (HasTargetNow && TargetDistance <= 5f)
+        if (HasTargetNow && InActionRange(Steal))
         {
             if (IsEnabledAndUsable(Preset.Phantom_Thief_Steal, Steal) &&
                 TargetHP <= Phantom_Thief_Steal_Health)
@@ -201,7 +204,7 @@ internal partial class OccultCrescent
         if (!CanWeaveNow && HasTargetNow)
         {
             if (IsEnabledAndUsable(Preset.Phantom_Samurai_Mineuchi, Mineuchi) &&
-                CanInterruptEnemy() && TargetDistance <= 5f)
+                CanInterruptEnemy() && InActionRange(Mineuchi))
             {
                 actionID = Mineuchi; // stun
                 return true;
@@ -215,7 +218,7 @@ internal partial class OccultCrescent
             }
 
             if (IsEnabledAndUsable(Preset.Phantom_Samurai_Iainuki, Iainuki) &&
-                !IsMovingNow && TargetDistance <= 8f)
+                !IsMovingNow && InActionRange(Iainuki))
             {
                 actionID = Iainuki; // cone
                 return true;
@@ -233,14 +236,14 @@ internal partial class OccultCrescent
         if (!HasTargetNow) return false;
         
         if (IsEnabledAndUsable(Preset.Phantom_Berserker_Rage, Rage) &&
-            TargetDistance <= 3f && CanWeaveNow)
+            InActionRange(Rage) && CanWeaveNow)
         {
             actionID = Rage; // buff
             return true;
         }
 
         if (IsEnabledAndUsable(Preset.Phantom_Berserker_DeadlyBlow, DeadlyBlow) &&
-            GetStatusEffectRemainingTime(Buffs.PentupRage) <= 3f && TargetDistance <= 5f && !CanWeaveNow)
+            GetStatusEffectRemainingTime(Buffs.PentupRage) <= 3f && InActionRange(DeadlyBlow) && !CanWeaveNow)
         {
             actionID = DeadlyBlow; // better when buff timer is low
             return true;
@@ -361,7 +364,7 @@ internal partial class OccultCrescent
         if (CanWeaveNow) return false;
         
         if (IsEnabledAndUsable(Preset.Phantom_Chemist_Revive, Revive) &&
-            TargetIsFriendly() && TargetIsDead())
+            CurrentTarget.IfCanUseOn(Revive).IfDead() is not null)
         {
             actionID = Revive;
             return true;
@@ -587,6 +590,119 @@ internal partial class OccultCrescent
 
         // GCDs
 
+        return false;
+    }
+    
+    private static bool TryGetMysticKnightAction(ref uint actionID)
+    {
+        if (!IsEnabled(Preset.Phantom_MysticKnight))
+            return false;
+        
+        if (IsEnabledAndUsable(Preset.Phantom_MysticKnight_MagicShell, MagicShell) && CanWeave() && InCombat())
+        {
+            actionID = MagicShell;
+            return true;
+        }
+      
+        if (CanWeaveNow) return false;
+        
+        if (IsEnabledAndUsable(Preset.Phantom_MysticKnight_BlazingSpellblade, BlazingSpellblade) && !HasStatusEffect(Buffs.BlazingSpellblade) && !CanWeave())
+        {
+            actionID = BlazingSpellblade;
+            return true;
+        }
+
+        if (IsEnabledAndUsable(Preset.Phantom_MysticKnight_HolySpellblade, HolySpellblade) && !CanWeave())
+        {
+            actionID = HolySpellblade;
+            return true;
+        }
+
+        if (IsEnabledAndUsable(Preset.Phantom_MysticKnight_SunderingSpellblade, SunderingSpellblade) && !CanWeave())
+        {
+            actionID = SunderingSpellblade;
+            return true;
+        }
+        
+        return false;
+    }
+    
+    private static bool TryGetDancerAction(ref uint actionID)
+    {
+        if (!IsEnabled(Preset.Phantom_Dancer))
+            return false;
+        
+        if (IsEnabledAndUsable(Preset.Phantom_Dancer_Dance, Dance) && CanWeave())
+        {
+            actionID = Dance;
+            return true;
+        }
+        
+        if (IsEnabledAndUsable(Preset.Phantom_Dancer_Mesmerize, Mesmerize) && InCombat() && CanWeave())
+        {
+            actionID = Mesmerize; //Damage Debuff
+            return true;
+        }
+        
+        if (CanWeaveNow) return false;
+        
+        #region Dances
+        if (IsEnabled(Preset.Phantom_Dancer_Dance) && HasStatusEffect(Buffs.PoisedToSwordDance))
+        {
+            actionID = PoisedToSwordDance;
+            return true;
+        }
+        if (IsEnabled(Preset.Phantom_Dancer_Dance) && HasStatusEffect(Buffs.TemptedToTango))
+        {
+            actionID = TemptedToTango;
+            return true;
+        }
+        if (IsEnabled(Preset.Phantom_Dancer_Dance) && HasStatusEffect(Buffs.Jitterbugged))
+        {
+            actionID = Jitterbug;
+            return true;
+        }
+        if (IsEnabled(Preset.Phantom_Dancer_Dance) && HasStatusEffect(Buffs.WillingToWaltz))
+        {
+            actionID = WillingToWaltz;
+            return true;
+        }
+        #endregion
+        
+        if (IsEnabledAndUsable(Preset.Phantom_Dancer_QuickStep, Quickstep) && !HasStatusEffect(Buffs.Quickstep))
+        {
+            actionID = Quickstep; //Evasion self buff
+            return true;
+        }
+        
+        return false;
+    }
+    
+    private static bool TryGetGladiatorAction(ref uint actionID)
+    {
+        if (CanWeaveNow) return false;
+        
+        if (IsEnabledAndUsable(Preset.Phantom_Gladiator_Finisher, Finisher) && HasBattleTarget() && InMeleeRange())
+        {
+            actionID = Finisher;
+            return true;
+        }
+        if (IsEnabledAndUsable(Preset.Phantom_Gladiator_Defend, Defend) && InCombat())
+        {
+            actionID = Defend;
+            return true;
+        }
+        if (IsEnabledAndUsable(Preset.Phantom_Gladiator_LongReach, LongReach) && HasBattleTarget())
+        {
+            actionID = LongReach;
+            return true;
+        }
+        if (IsEnabledAndUsable(Preset.Phantom_Gladiator_BladeBlitz, BladeBlitz) && InCombat() && InActionRange(BladeBlitz))
+        {
+            actionID = BladeBlitz;
+            return true;
+        }
+        
         return false;
     }
 }

@@ -1,3 +1,4 @@
+using Dalamud.Interface.Colors;
 using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Extensions;
 using static WrathCombo.Window.Functions.UserConfig;
@@ -11,29 +12,28 @@ internal partial class RPR
         {
             switch (preset)
             {
+                #region ST
+
                 case Preset.RPR_ST_Opener:
-
-                    if (DrawHorizontalRadioButton(RPR_Opener_StartChoice,
-                        "Normal Opener", $"Starts opener with {Harpe.ActionName()}", 0))
-                    {
-                        if (!CustomComboFunctions.InCombat())
-                            Opener().OpenerStep = 1;
-                    }
-
-                    DrawHorizontalRadioButton(RPR_Opener_StartChoice,
-                        "Early Opener", $"Starts opener with {ShadowOfDeath.ActionName()} instead, skipping {Harpe.ActionName()}", 1);
-
-                    ImGui.Spacing();
-
                     DrawBossOnlyChoice(RPR_Balance_Content);
                     break;
 
                 case Preset.RPR_ST_ArcaneCircle:
-                    DrawHorizontalRadioButton(RPR_ST_ArcaneCircleBossOption,
-                        "All content", $"Uses {ArcaneCircle.ActionName()} regardless of content.", 0);
+                    DrawSliderInt(0, 50, RPR_ST_ArcaneCircleHPOption,
+                        "Stop using at Enemy HP %. Set to Zero to disable this check.");
+
+                    ImGui.Indent();
+
+                    ImGui.TextColored(ImGuiColors.DalamudYellow,
+                        "Select what kind of enemies the HP check should be applied to:");
 
                     DrawHorizontalRadioButton(RPR_ST_ArcaneCircleBossOption,
-                        "Boss encounters Only", $"Only uses {ArcaneCircle.ActionName()} when in Boss encounters.", 1);
+                        "Non-Bosses", "Only applies the HP check above to non-bosses.", 0);
+
+                    DrawHorizontalRadioButton(RPR_ST_ArcaneCircleBossOption,
+                        "All Enemies", "Applies the HP check above to all enemies.", 1);
+
+                    ImGui.Unindent();
                     break;
 
                 case Preset.RPR_ST_AdvancedMode:
@@ -53,14 +53,30 @@ internal partial class RPR
                     break;
 
                 case Preset.RPR_ST_TrueNorthDynamic:
-                    DrawAdditionalBoolChoice(RPR_ST_TrueNorthDynamic_HoldCharge,
-                        "Hold True North for Gluttony Option", "Will hold the last charge of True North for use with Gluttony, even when out of position for Gibbet/Gallows.");
+                    DrawSliderInt(0, 1, RPR_ManualTN,
+                        "How many charges to keep for manual usage.");
+
+                    DrawAdditionalBoolChoice(RPR_ST_TrueNorthDynamicHoldCharge,
+                        "Hold True North for Gluttony Option", "Will hold the last charge of True North for use with Gluttony, even when out of position for Gibbet/Gallows.\n" +
+                                                               "If Above Slider is set to 1, it will NOT use the remaining charge for Gluttony, but for manual use.");
                     break;
 
                 case Preset.RPR_ST_RangedFiller:
-                    DrawAdditionalBoolChoice(RPR_ST_RangedFillerHarvestMoon,
-                        "Add Harvest Moon", "Adds Harvest Moon if available, when outside of melee range. Will not override Communio.");
+                    DrawAdditionalBoolChoice(RPR_ST_EnhancedHarpe,
+                        "Only use with Enhanced Harpe", "Only uses Harpe while u got Enhanced Harpe buff.");
                     break;
+
+                case Preset.RPR_ST_ComboHeals:
+                    DrawSliderInt(0, 100, RPR_STSecondWindHPThreshold,
+                        $"{Role.SecondWind.ActionName()} HP percentage threshold");
+
+                    DrawSliderInt(0, 100, RPR_STBloodbathHPThreshold,
+                        $"{Role.Bloodbath.ActionName()} HP percentage threshold");
+                    break;
+
+                #endregion
+
+                #region AoE
 
                 case Preset.RPR_AoE_WoD:
                     DrawSliderInt(0, 100, RPR_WoDHPThreshold,
@@ -72,20 +88,21 @@ internal partial class RPR
                         $"Stop Using {ArcaneCircle.ActionName()} When Target HP% is at or Below (Set to 0 to Disable This Check)");
                     break;
 
-                case Preset.RPR_ST_ComboHeals:
-                    DrawSliderInt(0, 100, RPR_STSecondWindHPThreshold,
-                        $"{Role.SecondWind.ActionName()} HP percentage threshold");
-
-                    DrawSliderInt(0, 100, RPR_STBloodbathHPThreshold,
-                        $"{Role.Bloodbath.ActionName()} HP percentage threshold");
-                    break;
-
                 case Preset.RPR_AoE_ComboHeals:
                     DrawSliderInt(0, 100, RPR_AoESecondWindHPThreshold,
                         $"{Role.SecondWind.ActionName()} HP percentage threshold");
 
                     DrawSliderInt(0, 100, RPR_AoEBloodbathHPThreshold,
                         $"{Role.Bloodbath.ActionName()} HP percentage threshold");
+                    break;
+
+                #endregion
+
+                #region Misc
+
+                case Preset.RPR_ST_BasicCombo_SoD:
+                    DrawSliderInt(0, 10, RPR_SoDRefreshRangeBasicCombo,
+                        $"Seconds remaining before refreshing {ShadowOfDeath.ActionName()}.");
                     break;
 
                 case Preset.RPR_Soulsow:
@@ -106,33 +123,42 @@ internal partial class RPR
                     DrawHorizontalMultiChoice(RPR_SoulsowOptions,
                         $"{BloodStalk.ActionName()}", $"Adds {Soulsow.ActionName()} to {BloodStalk.ActionName()}.", 5, 4);
                     break;
+
+                #endregion
             }
         }
 
         #region Variables
 
         public static UserInt
-            RPR_Positional = new("RPR_Positional", 0),
-            RPR_Opener_StartChoice = new("RPR_Opener_StartChoice", 0),
+
+            //ST
+            RPR_Positional = new("RPR_Positional"),
             RPR_Balance_Content = new("RPR_Balance_Content", 1),
+            RPR_ST_ArcaneCircleHPOption = new("RPR_ST_ArcaneCircleHPOption", 25),
+            RPR_ST_ArcaneCircleBossOption = new("RPR_ST_ArcaneCircleBossOption"),
             RPR_SoDRefreshRange = new("RPR_SoDRefreshRange", 6),
-            RPR_SoDHPThreshold = new("RPR_SoDThreshold", 0),
-            RPR_ST_ArcaneCircleBossOption = new("RPR_ST_ArcaneCircle_SubOption", 1),
+            RPR_SoDHPThreshold = new("RPR_SoDThreshold"),
+            RPR_ManualTN = new("RPR_ManualTN"),
             RPR_STSecondWindHPThreshold = new("RPR_STSecondWindThreshold", 40),
             RPR_STBloodbathHPThreshold = new("RPR_STBloodbathThreshold", 30),
+
+            //AoE
             RPR_WoDHPThreshold = new("RPR_WoDThreshold", 40),
             RPR_AoE_ArcaneCircleHPThreshold = new("RPR_AoE_ArcaneCircleHPThreshold", 40),
             RPR_AoESecondWindHPThreshold = new("RPR_AoESecondWindThreshold", 40),
-            RPR_AoEBloodbathHPThreshold = new("RPR_AoEBloodbathThreshold", 30);
+            RPR_AoEBloodbathHPThreshold = new("RPR_AoEBloodbathThreshold", 30),
+
+            //Misc
+            RPR_SoDRefreshRangeBasicCombo = new("RPR_SoDRefreshRangeBasicCombo", 6);
 
         public static UserBool
-            RPR_ST_TrueNorthDynamic_HoldCharge = new("RPR_ST_TrueNorthDynamic_HoldCharge"),
-            RPR_ST_RangedFillerHarvestMoon = new("RPR_ST_RangedFillerHarvestMoon");
+            RPR_ST_TrueNorthDynamicHoldCharge = new("RPR_ST_TrueNorthDynamicHoldCharge"),
+            RPR_ST_EnhancedHarpe = new("RPR_ST_EnhancedHarpe");
 
         public static UserBoolArray
             RPR_SoulsowOptions = new("RPR_SoulsowOptions");
 
         #endregion
-
     }
 }

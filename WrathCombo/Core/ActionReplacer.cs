@@ -9,7 +9,6 @@ using ECommons.GameHelpers;
 using ECommons.Throttlers;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,7 +54,7 @@ internal sealed class ActionReplacer : IDisposable
 
         // ReSharper disable once RedundantCast
         // Must keep the nint cast
-        getActionHook = Svc.Hook.HookFromAddress<GetActionDelegate>((nint) ActionManager.Addresses.GetAdjustedActionId.Value, GetAdjustedActionDetour);
+        getActionHook = Svc.Hook.HookFromAddress<GetActionDelegate>((nint)ActionManager.Addresses.GetAdjustedActionId.Value, GetAdjustedActionDetour);
         isActionReplaceableHook = Svc.Hook.HookFromAddress<IsActionReplaceableDelegate>(Service.Address.IsActionIdReplaceable, IsActionReplaceableDetour);
 
         getActionHook.Enable();
@@ -78,6 +77,19 @@ internal sealed class ActionReplacer : IDisposable
     internal uint OriginalHook(uint actionID) =>
         getActionHook.Original(_actionManager, actionID);
 
+    private bool actionReplacementEnabled;
+    public void EnableActionReplacingIfRequired()
+    {
+        if (actionReplacementEnabled)
+            Service.ActionReplacer.getActionHook.Enable();
+    }
+
+    public void DisableActionReplacingIfRequired()
+    {
+        actionReplacementEnabled = Service.ActionReplacer.getActionHook.IsEnabled;
+        Service.ActionReplacer.getActionHook.Disable();
+    }
+
 #pragma warning disable CS1573
     /// <summary>
     ///     Throttles access to <see cref="GetAdjustedAction(uint)" />.
@@ -97,19 +109,13 @@ internal sealed class ActionReplacer : IDisposable
                 UpdateFilteredCombos();
 
             // Bail if not wanting to replace actions in this manner
-            if (Service.Configuration.PerformanceMode)
-                return OriginalHook(actionID);
-            if (Svc.ClientState.LocalPlayer == null)
+            if (!Player.Available)
                 return OriginalHook(actionID);
 
             // Only refresh every so often
             if (!EzThrottler.Throttle("Actions" + actionID,
                     Service.Configuration.Throttle))
                 return LastActionInvokeFor[actionID];
-
-            //This is for the low level Archer quest(s) where you have to use Heavy Shot on an action. Best to just not run any combos here so things can run as planned.
-            if (actionID == BRD.HeavyShot && Svc.Objects.Any(x => x.Name.TextValue.Equals(Svc.Data.GetExcelSheet<EObjName>()[2000925].Singular.ToString(), StringComparison.InvariantCultureIgnoreCase) && x.IsTargetable))
-                return LastActionInvokeFor[BRD.HeavyShot] = BRD.HeavyShot;
 
             // Actually get the action
             LastActionInvokeFor[actionID] = GetAdjustedAction(actionID);
@@ -133,6 +139,9 @@ internal sealed class ActionReplacer : IDisposable
         try
         {
             if (ClassLocked() ||
+                Player.Object is null ||
+                !GenericHelpers.IsScreenReady() ||
+                !Svc.ClientState.IsLoggedIn ||
                 (DisabledJobsPVE.Any(x => x == Player.Job) && !Svc.ClientState.IsPvP) ||
                 (DisabledJobsPVP.Any(x => x == Player.Job) && Svc.ClientState.IsPvP))
                 return OriginalHook(actionID);
@@ -173,7 +182,7 @@ internal sealed class ActionReplacer : IDisposable
     public static unsafe bool ClassLocked()
     {
         if (DisableJobCheck) return false;
-        
+
         if (Player.Object is null) return false;
 
         if (Player.Level <= 35) return false;

@@ -1,6 +1,7 @@
 ﻿#region
 
 using System;
+using WrathCombo.API.Enum;
 
 #endregion
 
@@ -9,7 +10,7 @@ namespace WrathCombo.AutoRotation;
 public class AutoRotationConfigIPCWrapper(AutoRotationConfig? config)
 {
     public bool Enabled =>
-        P?.UIHelper?.AutoRotationStateControlled()?.state ??
+        P?.UIHelper.AutoRotationStateControlled()?.state ??
         config?.Enabled ??
         false;
 
@@ -66,17 +67,39 @@ public class AutoRotationConfigIPCWrapper(AutoRotationConfig? config)
         }
     }
 
+    public bool BypassQuest
+    {
+        get
+        {
+            var checkControlled =
+                P.UIHelper.AutoRotationConfigControlled("BypassQuest");
+            return checkControlled is not null
+                ? checkControlled.Value.state == 1
+                : config.BypassQuest;
+        }
+    }
+
+    public bool BypassFATE
+    {
+        get
+        {
+            var checkControlled =
+                P.UIHelper.AutoRotationConfigControlled("BypassFATE");
+            return checkControlled is not null
+                ? checkControlled.Value.state == 1
+                : config.BypassFATE;
+        }
+    }
+
     #region Direct Pass-Throughs (no IPC check)
-
-    public bool BypassQuest => config.BypassQuest;
-
-    public bool BypassFATE => config.BypassFATE;
 
     public bool BypassBuffs => config.BypassBuffs;
 
     public int CombatDelay => config.CombatDelay;
 
     public int Throttler => config.Throttler;
+
+    public float QueueWindow => config.QueueWindow;
 
     #endregion
 }
@@ -129,13 +152,35 @@ public class DPSSettingsIPCWrapper(DPSSettings settings)
         }
     }
 
+    public bool DPSAlwaysHardTarget
+    {
+        get
+        {
+            var checkControlled =
+                P.UIHelper.AutoRotationConfigControlled("DPSAlwaysHardTarget");
+            return checkControlled is not null
+                ? checkControlled.Value.state == 1
+                : settings.DPSAlwaysHardTarget;
+        }
+    }
+
+    public bool IgnoreRangeInBoss
+    {
+        get
+        {
+            var checkControlled =
+                P.UIHelper.AutoRotationConfigControlled("IgnoreRangeInBoss");
+            return checkControlled is not null
+                ? checkControlled.Value.state == 1
+                : settings.IgnoreRangeInBoss;
+        }
+    }
+
     #region Direct Pass-Throughs (no IPC check)
 
     public bool PreferNonCombat => settings.PreferNonCombat;
 
     public float MaxDistance => settings.MaxDistance;
-
-    public bool AlwaysSelectTarget => settings.AlwaysSelectTarget;
 
     public bool AoEIgnoreManual => settings.AoEIgnoreManual;
     
@@ -234,6 +279,18 @@ public class HealerSettingsIPCWrapper(HealerSettings settings)
         }
     }
 
+    public bool HealerAlwaysHardTarget
+    {
+        get
+        {
+            var checkControlled =
+                P.UIHelper.AutoRotationConfigControlled("HealerAlwaysHardTarget");
+            return checkControlled is not null
+                ? checkControlled.Value.state == 1
+                : settings.HealerAlwaysHardTarget;
+        }
+    }
+
     #region Direct Pass-Throughs (no IPC check)
 
     public bool AutoRezRequireSwift => settings.AutoRezRequireSwift;
@@ -245,6 +302,8 @@ public class HealerSettingsIPCWrapper(HealerSettings settings)
     public bool KardiaTanksOnly => settings.KardiaTanksOnly;
 
     public bool PreEmptiveHoT => settings.PreEmptiveHoT;
+    
+    public bool AutoRezDPSJobsHealersOnly => settings.AutoRezDPSJobsHealersOnly;
 
     #endregion
 }

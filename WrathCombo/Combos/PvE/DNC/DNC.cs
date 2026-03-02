@@ -1,5 +1,6 @@
 ﻿#region
 
+using WrathCombo.Combos.PvE.Enums;
 using WrathCombo.Core;
 using WrathCombo.CustomComboNS;
 using WrathCombo.Data;
@@ -34,9 +35,12 @@ internal partial class DNC : PhysicalRanged
             var targetHpThresholdFeather = DNC_ST_Adv_FeatherBurstPercent;
             var targetHpThresholdStandard = DNC_ST_Adv_SSBurstPercent;
             var targetHpThresholdTechnical = DNC_ST_Adv_TSBurstPercent;
+            var tillanaDropProtectionActive =
+                DNC_ST_ADV_TillanaUse ==
+                (int)TillanaUsageManner.NormallyPreventDrops;
             var tillanaDriftProtectionActive =
                 DNC_ST_ADV_TillanaUse ==
-                (int)TillanaDriftProtection.Favor;
+                (int)TillanaUsageManner.FavorOverEsprit;
 
             // Thresholds to wait for TS/SS to come off CD
             var longAlignmentThreshold = 0.6f;
@@ -86,8 +90,6 @@ internal partial class DNC : PhysicalRanged
                 GetCooldownRemainingTime(StandardStep) <
                 longAlignmentThreshold && // Up or about to be (some anti-drift)
                 !HasStatusEffect(Buffs.FinishingMoveReady) &&
-                (IsOffCooldown(Flourish) ||
-                 GetCooldownRemainingTime(Flourish) > 5) &&
                 !HasStatusEffect(Buffs.TechnicalFinish);
 
             #endregion
@@ -280,7 +282,7 @@ internal partial class DNC : PhysicalRanged
                 }
                 
                 if (ActionReady(ShieldSamba) &&
-                    IsEnabled(Preset.DNC_ST_Adv_ShieldSamba) && RaidWideCasting() && 
+                    IsEnabled(Preset.DNC_ST_Adv_ShieldSamba) && GroupDamageIncoming() && 
                     NumberOfAlliesInRange(ShieldSamba) >= GetPartyMembers().Count * .75 &&
                     !HasAnyStatusEffects ([BRD.Buffs.Troubadour, Buffs.ShieldSamba, MCH.Buffs.Tactician], anyOwner: true))
                     return ShieldSamba;
@@ -339,6 +341,13 @@ internal partial class DNC : PhysicalRanged
                 GetStatusEffectRemainingTime(Buffs.FlourishingStarfall) < 4)
                 return StarfallDance;
 
+            // ST Tillana (Emergency Use)
+            if (GetPossessedStatusRemainingTime(Buffs.FlourishingFinish) < GCD * 2.5 &&
+                tillanaDropProtectionActive &&
+                LevelChecked(Tillana) &&
+                EnemyIn15Yalms)
+                return Tillana;
+
             // ST Dance of the Dawn
             if (IsEnabled(Preset.DNC_ST_Adv_DawnDance) &&
                 HasStatusEffect(Buffs.DanceOfTheDawnReady) &&
@@ -371,18 +380,17 @@ internal partial class DNC : PhysicalRanged
             // ST Tillana
             if (HasStatusEffect(Buffs.FlourishingFinish) &&
                 IsEnabled(Preset.DNC_ST_Adv_Tillana) &&
+                LevelChecked(Tillana) &&
                 EnemyIn15Yalms)
                 return Tillana;
 
             // ST Saber Dance
-            if (IsEnabled(Preset.DNC_ST_Adv_SaberDance) &&
-                ActionReady(SaberDance) &&
-                Gauge.Esprit >=
-                DNC_ST_Adv_SaberThreshold || // Above esprit threshold use
-                (HasStatusEffect(Buffs.TechnicalFinish) &&
-                 Gauge.Esprit >= 50) && // Burst
-                (GetCooldownRemainingTime(TechnicalStep) > 5 ||
-                 IsOffCooldown(TechnicalStep))) // Tech is up
+            if(IsEnabled(Preset.DNC_ST_Adv_SaberDance) &&
+               ActionReady(SaberDance) &&
+               Gauge.Esprit >= 50 &&
+               (Gauge.Esprit >= DNC_ST_Adv_SaberThreshold ||
+                HasStatusEffect(Buffs.TechnicalFinish) ||
+                JustUsed(TechnicalFinish4)))
                 return SaberDance;
 
             // ST combos and burst attacks
@@ -596,9 +604,15 @@ internal partial class DNC : PhysicalRanged
                     if (!LevelChecked(TechnicalStep) && Gauge.Feathers > 0)
                         return FanDance1;
                 }
+                if (ActionReady(ShieldSamba) && GroupDamageIncoming() && 
+                    NumberOfAlliesInRange(ShieldSamba) >= GetPartyMembers().Count * .75 &&
+                    !HasAnyStatusEffects ([BRD.Buffs.Troubadour, Buffs.ShieldSamba, MCH.Buffs.Tactician], anyOwner: true))
+                    return ShieldSamba;
 
                 // ST Panic Heals
-
+                if (ActionReady(CuringWaltz) && PlayerHealthPercentageHp() < 40)
+                    return CuringWaltz;
+                
                 if (Role.CanSecondWind(40))
                     return Role.SecondWind;
             }
@@ -635,6 +649,13 @@ internal partial class DNC : PhysicalRanged
                 GetStatusEffectRemainingTime(Buffs.FlourishingStarfall) < 4)
                 return StarfallDance;
 
+            // ST Tillana (Emergency Use)
+            if (GetPossessedStatusRemainingTime(Buffs.FlourishingFinish) < GCD * 1.5 &&
+                Gauge.Esprit < 100 &&
+                LevelChecked(Tillana) &&
+                EnemyIn15Yalms)
+                return Tillana;
+
             // ST Dance of the Dawn
             if (HasStatusEffect(Buffs.DanceOfTheDawnReady) &&
                 ActionReady(DanceOfTheDawn) &&
@@ -662,6 +683,7 @@ internal partial class DNC : PhysicalRanged
 
             // ST Tillana
             if (HasStatusEffect(Buffs.FlourishingFinish) &&
+                LevelChecked(Tillana) &&
                 EnemyIn15Yalms)
                 return Tillana;
 
@@ -715,9 +737,6 @@ internal partial class DNC : PhysicalRanged
             var needToStandardOrFinish =
                 ActionReady(StandardStep) && // Up
                 GetTargetHPPercent() > targetHpThresholdStandard && // HP% check
-                (IsOffCooldown(
-                     TechnicalStep) || // Checking burst is ready for standard
-                 GetCooldownRemainingTime(TechnicalStep) > 5) && // Don't mangle
                 LevelChecked(StandardStep);
 
             var needToFinish =
@@ -729,8 +748,6 @@ internal partial class DNC : PhysicalRanged
                 IsEnabled(Preset.DNC_AoE_Adv_SS) && // Enabled
                 DNC_AoE_Adv_SS_IncludeSS == (int)IncludeStep.Yes &&
                 !HasStatusEffect(Buffs.FinishingMoveReady) &&
-                (IsOffCooldown(Flourish) ||
-                 GetCooldownRemainingTime(Flourish) > 5) &&
                 !HasStatusEffect(Buffs.TechnicalFinish);
 
             #endregion
@@ -934,7 +951,8 @@ internal partial class DNC : PhysicalRanged
 
             // AoE Tillana
             if (HasStatusEffect(Buffs.FlourishingFinish) &&
-                IsEnabled(Preset.DNC_AoE_Adv_Tillana))
+                IsEnabled(Preset.DNC_AoE_Adv_Tillana) &&
+                LevelChecked(Tillana))
                 return Tillana;
 
             // AoE Saber Dance
@@ -1172,7 +1190,8 @@ internal partial class DNC : PhysicalRanged
                 return StarfallDance;
 
             // AoE Tillana
-            if (HasStatusEffect(Buffs.FlourishingFinish))
+            if (HasStatusEffect(Buffs.FlourishingFinish) &&
+                LevelChecked(Tillana))
                 return Tillana;
 
             // AoE combos and burst attacks
@@ -1357,7 +1376,7 @@ internal partial class DNC : PhysicalRanged
                 //StatusManager.ExecuteStatusOff(Buffs.ClosedPosition);
 
                 return ClosedPosition.Retarget([ClosedPosition, Ending],
-                    DancePartnerResolver, dontCull: true);
+                    DancePartnerResolver);
             }
 
             return (int)DNC_Partner_ActionToShow switch
@@ -1445,6 +1464,9 @@ internal partial class DNC : PhysicalRanged
         protected override uint Invoke(uint actionID)
         {
             if (!Gauge.IsDancing) return actionID;
+            
+            if (WrathOpener.CurrentOpener?.CurrentState is OpenerState.InOpener)
+                return actionID;
 
             if (GetCustomDanceStep(actionID, out var danceStep))
                 return danceStep;

@@ -8,6 +8,7 @@ using ECommons.Logging;
 using System;
 using System.Linq;
 using System.Numerics;
+using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Extensions;
 using EZ = ECommons.Throttlers.EzThrottler;
 using TS = System.TimeSpan;
@@ -29,14 +30,19 @@ public static class ConflictingPlugins
     /// <param name="conflicts">
     ///     The output list of conflicts.
     /// </param>
+    /// <param name="forceRefresh">
+    ///     Whether to force a refresh of the conflicts, ignoring the cache.
+    /// </param>
     /// <returns>
     ///     Whether there are any conflicts at all.
     /// </returns>
-    public static bool TryGetConflicts(out Conflicts conflicts)
+    public static bool TryGetConflicts
+        (out Conflicts conflicts, bool forceRefresh = false)
     {
         // Only check for new conflicts periodically, not refreshed on demand anyway
         if (!EZ.Throttle("conflictCheck", TS.FromSeconds(1.5)) &&
-            _cachedConflicts is not null)
+            _cachedConflicts is not null &&
+            !forceRefresh)
         {
             conflicts = _cachedConflicts;
             return _cachedConflicts.ToArray().Length > 0;
@@ -87,6 +93,42 @@ public static class ConflictingPlugins
                 e.ToStringFull());
         }
 
+        try
+        {
+            if (TryGetGameSettingConflicts(out var gameConflicts))
+                conflicts[ConflictType.GameSetting] = gameConflicts;
+        }
+        catch (Exception e)
+        {
+            PluginLog.Error(
+                "[ConflictingPlugins] Failed to check for game setting conflicts: " +
+                e.ToStringFull());
+        }
+
+        try
+        {
+            if (TryGetWrathSettingConflicts(out var wrathConflicts))
+                conflicts[ConflictType.WrathSetting] = wrathConflicts;
+        }
+        catch (Exception e)
+        {
+            PluginLog.Error(
+                "[ConflictingPlugins] Failed to check for wrath setting conflicts:" +
+                e.ToStringFull());
+        }
+
+        try
+        {
+            if (TryGetDalamudConflicts(out var dalConflicts))
+                conflicts[ConflictType.Dalamud] = dalConflicts;
+        }
+        catch (Exception e)
+        {
+            PluginLog.Error(
+                "[ConflictingPlugins] Failed to check for Dalamud conflicts:" +
+                " " +
+                e.ToStringFull());
+        }
         _cachedConflicts = conflicts;
         return conflicts.ToArray().Length > 0;
     }
@@ -106,7 +148,10 @@ public static class ConflictingPlugins
         Conflict[] currentConflicts;
         var hasComboConflicts = conflicts[ConflictType.Combo].Length > 0;
         var hasSettingsConflicts = conflicts[ConflictType.Settings].Length > 0;
+        var hasWrathConflicts = conflicts[ConflictType.WrathSetting].Length > 0;
+        var hasGameConflicts = conflicts[ConflictType.GameSetting].Length > 0;
         var hasTargetingConflicts = conflicts[ConflictType.Targeting].Length > 0;
+        var hasDalamudConflicts = conflicts[ConflictType.Dalamud].Length > 0;
 
         ImGui.Spacing();
         ImGui.Spacing();
@@ -116,7 +161,7 @@ public static class ConflictingPlugins
             currentConflicts = conflicts[ConflictType.Combo];
             var conflictingPluginsText = "- " + string.Join("\n- ",
                 conflicts[ConflictType.Combo]
-                    .Select(x => $"{x.Name} v{x.Version}" +
+                    .Select(x => $"{x.Name} {x.Version}" +
                                  (string.IsNullOrEmpty(x.Reason)
                                      ? ""
                                      : $" ({x.Reason})")));
@@ -135,7 +180,7 @@ public static class ConflictingPlugins
             currentConflicts = conflicts[ConflictType.Settings];
             var conflictingSettingsText = "- " + string.Join("\n- ",
                 conflicts[ConflictType.Settings]
-                    .Select(x => $"{x.Name} v{x.Version} (setting: {x.Reason})"));
+                    .Select(x => $"{x.Name} {x.Version} (setting: {x.Reason})"));
 
             var tooltipText =
                 "The following plugins are known to conflict with\n" +
@@ -149,6 +194,54 @@ public static class ConflictingPlugins
                 hasComboConflicts || hasTargetingConflicts);
         }
 
+        if (hasGameConflicts)
+        {
+            currentConflicts = conflicts[ConflictType.GameSetting];
+
+            var tooltipText =
+                "The following game settings are known to conflict with " +
+                $"{P.Name}'s Settings:";
+
+            foreach (var conflict in conflicts[ConflictType.GameSetting])
+            {
+                var reasonSplit = conflict.Reason.Split("    ");
+                tooltipText +=
+                    $"\n- Setting: {reasonSplit[0]}" +
+                    $"\n    Problem: {reasonSplit[1]}";
+            }
+
+            tooltipText +=
+                "\n\nIt is recommended you change these settings, " +
+                "to prevent unexpected behavior and bugs.";
+
+            ShowWarning(ConflictType.GameSetting, tooltipText,
+                hasComboConflicts || hasTargetingConflicts || hasSettingsConflicts);
+        }
+
+        if (hasWrathConflicts)
+        {
+            currentConflicts = conflicts[ConflictType.WrathSetting];
+
+            var tooltipText =
+                $"The following {P.Name} Settings might not make sense:";
+
+            foreach (var conflict in conflicts[ConflictType.WrathSetting])
+            {
+                var reasonSplit = conflict.Reason.Split("    ");
+                tooltipText +=
+                    $"\n- Setting: {reasonSplit[0]}" +
+                    $"\n    Problem: {reasonSplit[1]}";
+            }
+
+            tooltipText +=
+                "\n\nIt is recommended you change these settings, " +
+                "if you want Wrath to work.";
+
+            ShowWarning(ConflictType.WrathSetting, tooltipText,
+                hasComboConflicts || hasTargetingConflicts ||
+                hasSettingsConflicts || hasGameConflicts);
+        }
+
         if (hasTargetingConflicts)
         {
             currentConflicts = conflicts[ConflictType.Targeting];
@@ -158,7 +251,7 @@ public static class ConflictingPlugins
 
             foreach (var conflict in conflicts[ConflictType.Targeting])
                 tooltipText +=
-                    $"\n- {conflict.Name} v{conflict.Version}" +
+                    $"\n- {conflict.Name} {conflict.Version}" +
                     $"\n    Actions Retargeted there and in {P.Name}:\n        - " +
                     string.Join("\n        - ", conflict.Reason.Split(','));
 
@@ -168,7 +261,25 @@ public static class ConflictingPlugins
                 $"disable Retargeting for the action in {P.Name},\n" +
                 "to prevent unexpected behavior and bugs.";
 
-            ShowWarning(ConflictType.Targeting, tooltipText, hasComboConflicts);
+            ShowWarning(ConflictType.Targeting, tooltipText,
+                hasComboConflicts || hasTargetingConflicts ||
+                hasSettingsConflicts || hasGameConflicts || hasWrathConflicts);
+        }
+
+        if (hasDalamudConflicts)
+        {
+            currentConflicts = conflicts[ConflictType.Dalamud];
+
+            var tooltipText = "You have conflict(s) in your Dalamud config:\n";
+
+            foreach (var conflict in conflicts[ConflictType.Dalamud])
+            {
+                tooltipText += $"{conflict.Name} {conflict.Reason}";
+            }
+
+            ShowWarning(ConflictType.Dalamud, tooltipText,
+                hasComboConflicts || hasTargetingConflicts ||
+                hasSettingsConflicts || hasGameConflicts || hasDalamudConflicts);
         }
 
         return;
@@ -177,9 +288,12 @@ public static class ConflictingPlugins
         {
             var color = type switch
             {
-                ConflictType.Combo => ImGuiColors.DalamudRed,
-                ConflictType.Targeting => ImGuiColors.DalamudYellow,
-                ConflictType.Settings => ImGuiColors.DalamudOrange,
+                ConflictType.Combo        => ImGuiColors.DalamudRed,
+                ConflictType.Targeting    => ImGuiColors.DalamudYellow,
+                ConflictType.Settings     => ImGuiColors.DalamudOrange,
+                ConflictType.WrathSetting => ImGuiColors.DalamudYellow,
+                ConflictType.GameSetting  => ImGuiColors.DalamudOrange,
+                ConflictType.Dalamud      => ImGuiColors.DalamudYellow,
                 _ => throw new ArgumentOutOfRangeException(nameof(type),
                     $"Unknown conflict type: {type}"),
             };
@@ -236,11 +350,12 @@ public static class ConflictingPlugins
 
         #region Redirect
 
-        if (ConflictingPluginsChecks.Redirect.Conflicted)
+        if (ConflictingPluginsChecks.Redirect.Conflicted &&
+            ConflictingPluginsChecks.Redirect.ConflictingActions.Length > 3)
         {
             var actions = ConflictingPluginsChecks.Redirect.ConflictingActions;
             var conflictMessage = actions
-                .Where((action, i) => action is not (0 or 1) || i >= 2)
+                .Where((action, i) => action is not (0 or 1) || i >= 3)
                 .Aggregate("",
                     (current, action) => current + action.ActionName() + ",");
             conflictMessage = conflictMessage[..^1]; // remove last comma
@@ -330,7 +445,7 @@ public static class ConflictingPlugins
 
         #region BossMod
 
-        if (ConflictingPluginsChecks.BossMod.SettingConflicted)
+        if (ConflictingPluginsChecks.BossMod.TargetingSettingConflicted)
         {
             conflicts = conflicts.Append(new Conflict(
                     "BossMod", ConflictType.Settings,
@@ -338,15 +453,31 @@ public static class ConflictingPlugins
                 .ToArray();
         }
 
+        if (ConflictingPluginsChecks.BossMod.QueueSettingConflicted)
+        {
+            conflicts = conflicts.Append(new Conflict(
+                    "BossMod", ConflictType.Settings,
+                    "Manual Queueing is Enabled [uncheck 'Use custom queueing']"))
+                .ToArray();
+        }
+
         #endregion
 
         #region BossModReborn
 
-        if (ConflictingPluginsChecks.BossModReborn.SettingConflicted)
+        if (ConflictingPluginsChecks.BossModReborn.TargetingSettingConflicted)
         {
             conflicts = conflicts.Append(new Conflict(
                     "BossModReborn", ConflictType.Settings,
                     "AI is enabled WITH targeting [check 'Manual targeting']"))
+                .ToArray();
+        }
+
+        if (ConflictingPluginsChecks.BossModReborn.QueueSettingConflicted)
+        {
+            conflicts = conflicts.Append(new Conflict(
+                    "BossModReborn", ConflictType.Settings,
+                    "Manual Queueing is Enabled [uncheck 'Use custom queueing']"))
                 .ToArray();
         }
 
@@ -366,7 +497,17 @@ public static class ConflictingPlugins
                         "Redirect", ConflictType.Settings,
                         "Options > Treat all friendly actions as mouseovers"))
                     .ToArray();
+            if (ConflictingPluginsChecks.Redirect.ConflictingActions[2] is 1)
+                conflicts = conflicts.Append(new Conflict(
+                        "Redirect", ConflictType.Settings,
+                        "Options > Treat all hostile actions as mouseovers"))
+                    .ToArray();
         }
+        if (ConflictingPluginsChecks.Redirect.BunnyConflict)
+            conflicts = conflicts.Append(new Conflict(
+                    "Redirect", ConflictType.Settings,
+                    "Whole Plugin - Could be causing Bunnies [Reload or Disable Redirect]"))
+                .ToArray();
 
         #endregion
 
@@ -433,6 +574,120 @@ public static class ConflictingPlugins
         }
 
         #endregion
+
+        return conflicts.Length > 0;
+    }
+
+    #endregion
+
+    #region Game Setting Conflicts
+
+    /// <summary>
+    ///     Checks for conflicts from specific settings in the game,
+    ///     like those that modify ground target placement.
+    /// </summary>
+    /// <param name="conflicts">
+    ///     The output list of conflicting game settings.
+    /// </param>
+    /// <returns>
+    ///     Whether there are game settings conflicts.
+    /// </returns>
+    private static bool TryGetGameSettingConflicts(out Conflict[] conflicts)
+    {
+        conflicts = [];
+
+        if (ConflictingPluginsChecks.XIV.Conflicted)
+        {
+
+            if (ConflictingPluginsChecks.XIV.AutoFaceTargetConflicted)
+                conflicts = conflicts.Append(new Conflict(
+                        "XIV", ConflictType.GameSetting,
+                        "Character Configuration > Control Settings > Target > " +
+                        "Target Settings > Automatically face target when using action." +
+                        "    " +
+                        "You will have to manually face the target, " +
+                        "outside of Auto Rotation, for actions to execute."))
+                    .ToArray();
+
+            if (ConflictingPluginsChecks.XIV.GroundTargetingPlacementConflicted)
+                conflicts = conflicts.Append(new Conflict(
+                        "XIV", ConflictType.GameSetting,
+                        "Character Configuration > Control Settings > Target > " +
+                        "Ground Targeting Settings > Press action twice to execute." +
+                        "    " +
+                        "Ground Actions cannot be Retargeted without additional click."))
+                    .ToArray();
+        }
+
+        return conflicts.Length > 0;
+    }
+
+    #endregion
+
+    #region Wrath Setting Conflicts
+
+    /// <summary>
+    ///     Checks for specific settings within Wrath, that don't make sense in
+    ///     the current context, like Action Replacing being off in PvP
+    /// </summary>
+    /// <param name="conflicts">
+    ///     The output list of conflicting wrath settings.
+    /// </param>
+    /// <returns>
+    ///     Whether there are wrath settings conflicts.
+    /// </returns>
+    private static bool TryGetWrathSettingConflicts(out Conflict[] conflicts)
+    {
+        conflicts = [];
+
+        if (ConflictingPluginsChecks.Wrath.Conflicted)
+        {
+            if (ConflictingPluginsChecks.Wrath.ActionReplacingOffNoAutos)
+                conflicts = conflicts.Append(new Conflict(
+                        "Wrath", ConflictType.WrathSetting,
+                        "Action Replacing OFF" +
+                        "    " +
+                        "Your current job has no Combos enabled in Auto-Mode; " +
+                        "Wrath cannot work in this state."))
+                    .ToArray();
+
+            if (ConflictingPluginsChecks.Wrath.ActionReplacingOffInPvP)
+                conflicts = conflicts.Append(new Conflict(
+                        "Wrath", ConflictType.WrathSetting,
+                        "Action Replacing OFF" +
+                        "    " +
+                        "Your current job has PvP Combos on, " +
+                        "and you're in a PVP zone; " +
+                        "Wrath cannot work in this state."))
+                    .ToArray();
+
+#if !DEBUG
+            if ((ConflictingPluginsChecks.Wrath.ActionReplacingOffNoAutos ||
+                 ConflictingPluginsChecks.Wrath.ActionReplacingOffInPvP) &&
+                EZ.Throttle("conflictActionReplacingNotice", TS.FromSeconds(30)) &&
+                !CustomComboFunctions.InCombat())
+                DuoLog.Debug($"Combos cannot run in this configuration! " +
+                             $"Open the UI for Conflict details.");
+#endif
+        }
+
+        return conflicts.Length > 0;
+    }
+
+    private static bool TryGetDalamudConflicts(out Conflict[] conflicts)
+    {
+        conflicts = [];
+
+        if (ConflictingPluginsChecks.Dalamud.Conflicted)
+        {
+            if (ConflictingPluginsChecks.Dalamud.OpenerDTRDisabled)
+            {
+                conflicts = conflicts.Append(new Conflict(
+                    "Dalamud", ConflictType.Dalamud,
+                    $"Opener DTR Disabled\n\nYou have the Opener DTR hidden in Dalamud settings, this will not show."))
+                    .ToArray();
+            }
+        }
 
         return conflicts.Length > 0;
     }

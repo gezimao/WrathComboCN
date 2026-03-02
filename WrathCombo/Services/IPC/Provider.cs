@@ -1,9 +1,11 @@
 ﻿#region
 
+using Dalamud.Plugin.Ipc;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
 using ECommons.EzIpcManager;
 using ECommons.GameHelpers;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -12,6 +14,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using WrathCombo.API.Enum;
+using WrathCombo.API.Extension;
 using WrathCombo.Combos;
 using EZ = ECommons.Throttlers.EzThrottler;
 using TS = System.TimeSpan;
@@ -86,6 +90,8 @@ public partial class Provider : IDisposable
 
         return output;
     }
+
+    public ICallGateProvider<ActionType, uint, object> OnActionUsedProvider = Svc.PluginInterface.GetIpcProvider<ActionType, uint, object>("OnActionUsed");
 
     /// <summary>
     ///     A token to cancel <see cref="BuildCaches" /> if the IPC is disabled.
@@ -446,7 +452,7 @@ public partial class Provider : IDisposable
         // Bail if the lease does not exist
         if (!Leasing.CheckLeaseExists(lease))
         {
-            Logging.Warn(BailMessages.InvalidLease);
+            Logging.Warn(BailMessage.InvalidLease.Description);
             return;
         }
 

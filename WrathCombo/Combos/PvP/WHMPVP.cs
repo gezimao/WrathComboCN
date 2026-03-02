@@ -19,7 +19,8 @@ internal static class WHMPvP
         Aquaveil = 29227,
         MiracleOfNature = 29228,
         SeraphStrike = 29229,
-        AfflatusPurgation = 29230;
+        AfflatusPurgation = 29230,
+        Glare4 = 41499;
 
     internal class Buffs
     {
@@ -115,17 +116,17 @@ internal static class WHMPvP
                 
                 if (WHMPvP_Burst_Heals_Options[1] && HasStatusEffect(Buffs.Cure3Ready) && GetTargetHPPercent(healTarget) <= WHMPvP_Burst_HealsThreshold)
                     return WHMPvP_Burst_HealsRetarget
-                        ? Cure3.Retarget(Glare, healTarget, true)
+                        ? Cure3.Retarget(Glare, healTarget)
                         : Cure3;
                 
                 if (WHMPvP_Burst_Heals_Options[2] && ActionReady(Aquaveil) && CanWeave() && GetTargetHPPercent(healTarget) <= WHMPvP_Burst_HealsThreshold)
                     return WHMPvP_Burst_HealsRetarget
-                        ? Aquaveil.Retarget(Glare, healTarget, true)
+                        ? Aquaveil.Retarget(Glare, healTarget)
                         : Aquaveil;
                 
                 if (WHMPvP_Burst_Heals_Options[0] && ActionReady(Cure2) && GetTargetHPPercent(healTarget) <= WHMPvP_Burst_HealsThreshold)
                     return WHMPvP_Burst_HealsRetarget
-                        ? Cure2.Retarget(Glare, healTarget, true)
+                        ? Cure2.Retarget(Glare, healTarget)
                         : Cure2;
             }
             return actionID;
@@ -143,17 +144,33 @@ internal static class WHMPvP
             
             if (IsEnabled(Preset.WHMPvP_Cure3) && HasStatusEffect(Buffs.Cure3Ready))
                 return WHMPvP_Heals_Options[1]
-                    ? Cure3.Retarget(Cure2, SimpleTarget.Stack.AllyToHealPVP, true)
+                    ? Cure3.Retarget(Cure2, SimpleTarget.Stack.AllyToHealPVP)
                     : Cure3;
 
             if (IsEnabled(Preset.WHMPvP_Aquaveil) && IsOffCooldown(Aquaveil))
                 return WHMPvP_Heals_Options[2]
-                    ? Aquaveil.Retarget(Cure2, SimpleTarget.Stack.AllyToHealPVP, true)
+                    ? Aquaveil.Retarget(Cure2, SimpleTarget.Stack.AllyToHealPVP)
                     : Aquaveil;
 
             return WHMPvP_Heals_Options[2]
-                ? actionID.Retarget(Cure2, SimpleTarget.Stack.AllyToHealPVP, true)
+                ? actionID.Retarget(Cure2, SimpleTarget.Stack.AllyToHealPVP)
                 : actionID;
+        }
+
+        internal class WHMPvP_Seraphstrike : CustomCombo
+        {
+            protected internal override Preset Preset => Preset.WHMPvP_Seraphstrike;
+
+            protected override uint Invoke(uint actionID)
+            {
+                if (actionID is SeraphStrike)
+                {
+                    if (IsEnabled(Preset.WHMPvP_Seraphstrike) && HasStatusEffect(Buffs.SacredSight))
+                        return Glare4;
+                }
+
+                return actionID;
+            }
         }
     }
 }

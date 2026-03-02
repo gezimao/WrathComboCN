@@ -4,10 +4,16 @@ using ECommons.DalamudServices;
 using ECommons.Logging;
 using System;
 using System.Linq;
+using Dalamud.Game.Config;
+using WrathCombo.API.Enum;
 using WrathCombo.AutoRotation;
+using WrathCombo.Combos.PvE;
 using WrathCombo.Core;
+using WrathCombo.CustomComboNS.Functions;
 using WrathCombo.Extensions;
+using WrathCombo.Services;
 using WrathCombo.Services.IPC_Subscriber;
+using WrathCombo.Window.Functions;
 using EZ = ECommons.Throttlers.EzThrottler;
 using TS = System.TimeSpan;
 
@@ -18,6 +24,25 @@ namespace WrathCombo.Data.Conflicts;
 public static class ConflictingPluginsChecks
 {
     private static bool _cancelConflictChecks;
+    
+    internal static readonly Action ForceRunChecks = () =>
+    {
+        if (_cancelConflictChecks)
+            return;
+
+        PluginLog.Verbose(
+            "[ConflictingPlugins] Forcing immediate check for conflicting plugins");
+
+        BossMod.CheckForConflict(true);
+        BossModReborn.CheckForConflict(true);
+        Redirect.CheckForConflict(true);
+        ReAction.CheckForConflict(true);
+        ReActionEx.CheckForConflict(true);
+        MOAction.CheckForConflict(true);
+        Wrath.CheckForConflict(true);
+        XIV.CheckForConflict(true);
+        Dalamud.CheckForConflict(true);
+    };
 
     private static readonly Action RunChecks = () =>
     {
@@ -33,6 +58,9 @@ public static class ConflictingPluginsChecks
         ReAction.CheckForConflict();
         ReActionEx.CheckForConflict();
         MOAction.CheckForConflict();
+        Wrath.CheckForConflict();
+        XIV.CheckForConflict();
+        Dalamud.CheckForConflict();
 
         Svc.Framework.RunOnTick(RunChecks!, TS.FromSeconds(4.11));
     };
@@ -43,6 +71,9 @@ public static class ConflictingPluginsChecks
     internal static ReActionCheck ReAction { get; } = new();
     internal static ReActionCheck ReActionEx { get; } = new(true);
     internal static MOActionCheck MOAction { get; } = new();
+    internal static WrathCheck Wrath { get; } = new();
+    internal static XIVCheck XIV { get; } = new();
+    internal static DalamudCheck Dalamud { get; } = new();
 
     public static void Begin()
     {
@@ -64,6 +95,8 @@ public static class ConflictingPluginsChecks
         ReAction.Dispose();
         ReActionEx.Dispose();
         MOAction.Dispose();
+        XIV.Dispose();
+        Dalamud.Dispose();
     }
 
     internal sealed class BossModCheck(bool reborn = false)
@@ -76,13 +109,14 @@ public static class ConflictingPluginsChecks
         private int _conflictsInARow;
         private int _maxConflictsInARow = 4;
 
-        public bool SettingConflicted;
+        public bool TargetingSettingConflicted;
+        public bool QueueSettingConflicted;
 
         protected override BossModIPC IPC => (BossModIPC)_ipc;
 
-        public override void CheckForConflict()
+        public override void CheckForConflict(bool forceRefresh = false)
         {
-            if (!ThrottlePassed(8, false))
+            if (!ThrottlePassed(8, false, forceRefresh))
                 return;
 #if DEBUG
             _maxConflictsInARow = 1;
@@ -113,9 +147,12 @@ public static class ConflictingPluginsChecks
             }
 
             // Check for a targeting conflict
-            SettingConflicted =
+            TargetingSettingConflicted =
                 IPC.IsAutoTargetingEnabled() &&
                 AutoRotationController.cfg.DPSRotationMode != DPSRotationMode.Manual;
+
+            // Check for a queue conflict
+            QueueSettingConflicted = IPC.IsUsingCustomQueuing();
 
             // Check for a combo conflict
             if (IPC.HasAutomaticActionsQueued())
@@ -141,9 +178,9 @@ public static class ConflictingPluginsChecks
         public uint[] ConflictingActions = [];
         protected override MOActionIPC IPC => (MOActionIPC)_ipc;
 
-        public override void CheckForConflict()
+        public override void CheckForConflict(bool forceRefresh = false)
         {
-            if (!ThrottlePassed())
+            if (!ThrottlePassed(forceRefresh: forceRefresh))
                 return;
 
             var moActionRetargeted = IPC.GetRetargetedActions().ToHashSet();
@@ -174,18 +211,39 @@ public static class ConflictingPluginsChecks
         /// <remarks>
         ///     <b>Key <c>0</c></b> is Ground Targeting enabled meta action,<br />
         ///     <b>Key <c>1</c></b> is Beneficial Actions enabled meta action,<br />
+        ///     <b>Key <c>2</c></b> is Hostile Actions enabled meta action,<br />
         ///     <b>Key <c>3</c>+</b> are all overlapping action retargets.
         /// </remarks>
         public uint[] ConflictingActions = [0, 0];
 
+        public bool BunnyConflict;
+
+        private DateTime _lastBunnyReload = DateTime.Now;
+
         protected override RedirectIPC IPC => (RedirectIPC)_ipc;
 
-        public override void CheckForConflict()
+        public override void CheckForConflict(bool forceRefresh = false)
         {
-            if (!ThrottlePassed())
+            if (!IPC.IsEnabled)
+            {
+                BunnyConflict = false;
+                _lastBunnyReload = DateTime.Now;
+            }
+            if (!ThrottlePassed(forceRefresh: forceRefresh))
                 return;
 
-            ConflictingActions = [0, 0];
+            ConflictingActions = [0, 0, 0];
+
+            // Check if the user has bunny recently
+            if (CustomComboFunctions.JustUsed(NIN.Rabbit, 45) &&
+                DateTime.Now - _lastBunnyReload > TS.FromSeconds(30))
+            {
+                PluginLog.Verbose(
+                    $"[ConflictingPlugins] [{Name}] Recent Bunny Detected");
+                BunnyConflict = true;
+            }
+            else
+                BunnyConflict = false;
 
             var conflictedThisCheck = false;
             var wrathRetargeted = PresetStorage.AllRetargetedActions.ToHashSet();
@@ -208,6 +266,17 @@ public static class ConflictingPluginsChecks
                 PluginLog.Verbose(
                     $"[ConflictingPlugins] [{Name}] Beneficial Actions are Redirected");
                 ConflictingActions[1] = 1;
+                MarkConflict();
+                conflictedThisCheck = true;
+            }
+            
+            // Check if all Hostile Actions are redirected
+            if (IPC.AreHostileActionsRedirected() &&
+                wrathRetargeted.Any(x => x.IsEnemyTargetable()))
+            {
+                PluginLog.Verbose(
+                    $"[ConflictingPlugins] [{Name}] Hostile Actions are Redirected");
+                ConflictingActions[2] = 1;
                 MarkConflict();
                 conflictedThisCheck = true;
             }
@@ -257,9 +326,9 @@ public static class ConflictingPluginsChecks
 
         protected override ReActionIPC IPC => (ReActionIPC)_ipc;
 
-        public override void CheckForConflict()
+        public override void CheckForConflict(bool forceRefresh = false)
         {
-            if (!ThrottlePassed())
+            if (!ThrottlePassed(forceRefresh: forceRefresh))
                 return;
 
             ConflictingActions = [];
@@ -368,10 +437,165 @@ public static class ConflictingPluginsChecks
         }
     }
 
+    internal sealed class XIVCheck() : ConflictCheck()
+    {
+        protected override ReusableIPC IPC => null!;
+
+        public bool GroundTargetingPlacementConflicted;
+        public bool AutoFaceTargetConflicted;
+
+        public override void CheckForConflict(bool forceRefresh = false)
+        {
+            if (!ThrottlePassed(forceRefresh: forceRefresh))
+                return;
+
+            #region Ground Targeting Placement Conflict
+
+            bool doublePressGroundActions;
+            try
+            {
+                if (!Svc.GameConfig.TryGet(
+                        UiConfigOption.GroundTargetActionExcuteType,
+                        out doublePressGroundActions))
+                    throw new AccessViolationException();
+            }
+            catch
+            {
+                PluginLog.Warning(
+                    $"[ConflictingPlugins] [{Name}] " +
+                    $"Could not access UIConfig.DoublePressGroundActions");
+                doublePressGroundActions = false;
+            }
+            PluginLog.Verbose(
+                $"[ConflictingPlugins] [{Name}] `UIConfig.DoublePressGroundActions`: {doublePressGroundActions}");
+            
+            var wrathRetargeted = PresetStorage.AllRetargetedActions.ToHashSet();
+            
+            GroundTargetingPlacementConflicted =
+                doublePressGroundActions &&
+                wrathRetargeted.Any(x => x.IsGroundTargeted());
+
+            #endregion
+
+            #region Auto Face Target Conflict
+
+            bool autoFaceEnabled;
+            try
+            {
+                if (!Svc.GameConfig.TryGet(
+                        UiControlOption.AutoFaceTargetOnAction,
+                        out autoFaceEnabled))
+                    throw new AccessViolationException();
+            }
+            catch
+            {
+                PluginLog.Warning(
+                    $"[ConflictingPlugins] [{Name}] " +
+                    $"Could not access UIControl.AutoFace");
+                autoFaceEnabled = false;
+            }
+            PluginLog.Verbose(
+                $"[ConflictingPlugins] [{Name}] `UIControl.AutoFace`: {autoFaceEnabled}");
+            
+            AutoFaceTargetConflicted = !autoFaceEnabled;
+
+            #endregion
+
+            if (GroundTargetingPlacementConflicted || AutoFaceTargetConflicted)
+                MarkConflict();
+            else
+                Conflicted = false;
+        }
+    }
+
+    internal sealed class WrathCheck() : ConflictCheck(wrath: true)
+    {
+        protected override ReusableIPC IPC => null!;
+
+        public bool ActionReplacingOffNoAutos;
+        public bool ActionReplacingOffInPvP;
+
+        public override void CheckForConflict(bool forceRefresh = false)
+        {
+            if (!ThrottlePassed(forceRefresh: forceRefresh))
+                return;
+
+            #region Action Replacing Off with no Auto-Mode Combos
+
+            var wrathNumberAutoModePresetsOnJob = Presets.GetJobAutorots
+                .Count(x => x.Value);
+            
+            PluginLog.Verbose(
+                $"[ConflictingPlugins] [{Name}] `ActionReplacing`: " + 
+                $"{Service.Configuration.ActionChanging}, " +
+                $"`NumberAuto-ModeCombosOnJob`: " +
+                $"{wrathNumberAutoModePresetsOnJob}");
+            
+            ActionReplacingOffNoAutos =
+                !Service.Configuration.ActionChanging &&
+                wrathNumberAutoModePresetsOnJob < 1 &&
+                !ContentCheck.IsInPVPContent;
+
+            #endregion
+
+            #region Action Replacing Off in PvP with PvP Combos
+
+            var filteredCombos = ActionReplacer.FilteredCombos ?? [];
+            var wrathNumberPvPPresetsOnJob = filteredCombos
+                .Count(x => x.Preset.Attributes() is not null &&
+                            x.Preset.Attributes().IsPvP);
+            
+            PluginLog.Verbose(
+                $"[ConflictingPlugins] [{Name}] `ActionReplacing`: " + 
+                $"{Service.Configuration.ActionChanging}, " +
+                $"`NumberPvPCombosOnJob`: " +
+                $"{wrathNumberAutoModePresetsOnJob}," +
+                $"`InPvP`: {ContentCheck.IsInPVPContent}");
+            
+            ActionReplacingOffInPvP =
+                !Service.Configuration.ActionChanging &&
+                wrathNumberPvPPresetsOnJob > 0 &&
+                ContentCheck.IsInPVPContent;
+
+            #endregion
+
+            if (ActionReplacingOffNoAutos || ActionReplacingOffInPvP)
+                MarkConflict();
+            else
+                Conflicted = false;
+        }
+    }
+
+    internal sealed class DalamudCheck() : ConflictCheck(dalamud: true)
+    {
+        protected override ReusableIPC IPC => null!;
+        public bool OpenerDTRDisabled;
+
+        public override void CheckForConflict(bool forceRefresh = false)
+        {
+            if (!ThrottlePassed(forceRefresh: forceRefresh))
+                return;
+
+            OpenerDTRDisabled = P.OpenerDtr.UserHidden && Service.Configuration.ShowOpenerDtr;
+
+            if (OpenerDTRDisabled)
+                MarkConflict();
+            else
+                Conflicted = false;
+        }
+    }
+
     internal abstract class ConflictCheck : IDisposable
     {
         // ReSharper disable once InconsistentNaming
         protected readonly ReusableIPC _ipc;
+
+        protected ConflictCheck(bool wrath = false, bool dalamud = false)
+        {
+            _ipc = wrath ? new WrathSettingsIPC() : dalamud ? new DalamudSettingsIPC() : new XIVSettingsIPC();
+            PluginLog.Verbose(
+                $"[ConflictingPlugins] [{Name}] Setup for Checking");
+        }
 
         protected ConflictCheck(ReusableIPC ipc)
         {
@@ -393,7 +617,7 @@ public static class ConflictingPluginsChecks
         public virtual void Dispose() => _ipc.Dispose();
 
         // ReSharper disable once UnusedMemberInSuper.Global
-        public abstract void CheckForConflict();
+        public abstract void CheckForConflict(bool forceRefresh = false);
 
         /// <summary>
         ///     Checks if an EZ Throttle passes, and if the plugin is enabled.
@@ -405,13 +629,18 @@ public static class ConflictingPluginsChecks
         /// <param name="enabledCheck">
         ///     Whether to check if the plugin is enabled as well.
         /// </param>
+        /// <param name="forceRefresh">
+        ///     Whether to skip the throttle check.
+        /// </param>
         /// <returns>
         ///     If the <see cref="CheckForConflict" /> should be run or not.
         /// </returns>
-        protected bool ThrottlePassed(int frequency = 5, bool enabledCheck = true)
+        protected bool ThrottlePassed
+            (int frequency = 5, bool enabledCheck = true, bool forceRefresh = false)
         {
             if (!EZ.Throttle($"conflictCheck{Name}",
-                    TS.FromSeconds(frequency)))
+                    TS.FromSeconds(frequency)) &&
+                !forceRefresh)
                 return false;
             if (enabledCheck && !_ipc.IsEnabled)
             {
@@ -433,6 +662,18 @@ public static class ConflictingPluginsChecks
                 PluginLog.Information($"[ConflictingPlugins] [{Name}] " +
                                       "Marked Conflict!");
             Conflicted = true;
+        }
+
+        private class WrathSettingsIPC() : ReusableIPC("Wrath", new Version(0, 0))
+        {
+        }
+
+        private class XIVSettingsIPC() : ReusableIPC("XIV", new Version(0, 0))
+        {
+        }
+
+        private class DalamudSettingsIPC() : ReusableIPC("Dalamud", new Version(0, 0))
+        {
         }
     }
 }

@@ -18,22 +18,28 @@ using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using Lumina.Excel.Sheets;
 using Newtonsoft.Json;
 using System;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Numerics;
 using System.Text;
+using WrathCombo.API.Enum;
 using WrathCombo.AutoRotation;
+using WrathCombo.Combos.PvE;
 using WrathCombo.Core;
 using WrathCombo.CustomComboNS;
 using WrathCombo.Data;
 using WrathCombo.Extensions;
 using WrathCombo.Services;
-using WrathCombo.Services.IPC_Subscriber;
+using WrathCombo.Services.ActionRequestIPC;
 using WrathCombo.Services.IPC;
+using WrathCombo.Services.IPC_Subscriber;
+using WrathCombo.Window.Functions;
 using static WrathCombo.CustomComboNS.Functions.CustomComboFunctions;
 using Action = Lumina.Excel.Sheets.Action;
 using BattleNPCSubKind = Dalamud.Game.ClientState.Objects.Enums.BattleNpcSubKind;
 using ObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
-using Status = Dalamud.Game.ClientState.Statuses.Status;
+using Status = Dalamud.Game.ClientState.Statuses.IStatus;
 
 #endregion
 
@@ -45,7 +51,7 @@ internal class Debug : ConfigWindow, IDisposable
     private static int _sheetCustomId = 0;
     private static string _debugError = string.Empty;
     private static string _debugConfig = string.Empty;
-    private static PluginConfiguration? _previousConfig;
+    private static Configuration? _previousConfig;
 
     private static Guid? _wrathLease;
     private static Action? _debugSpell;
@@ -72,6 +78,8 @@ internal class Debug : ConfigWindow, IDisposable
     internal new static unsafe void Draw()
     {
         ImGui.Text("This is where you can figure out where it all went wrong.");
+        if (PingPluginIPC.CanGetPing)
+            ImGui.Text($"Current Ping: {PingPluginIPC.LastPing}ms");
 
         ImGuiEx.Spacing(new Vector2(0f, SpacingMedium));
 
@@ -92,9 +100,71 @@ internal class Debug : ConfigWindow, IDisposable
         {
             try
             {
-                var base64 = Convert.FromBase64String(_debugConfig);
-                var decode = Encoding.UTF8.GetString(base64);
-                var config = JsonConvert.DeserializeObject<PluginConfiguration>(decode);
+                // Trim off anything extra copied from that section of the file
+                var stripped = _debugConfig;
+                const string startMarker = "START DEBUG CODE";
+                const string endMarker = "END DEBUG CODE";
+                var startIdx = stripped.IndexOf(startMarker, StringComparison.OrdinalIgnoreCase);
+                if (startIdx >= 0)
+                {
+                    startIdx += startMarker.Length;
+                    var endIdx = stripped.IndexOf(endMarker, startIdx, StringComparison.OrdinalIgnoreCase);
+                    stripped = endIdx >= 0 ? stripped.Substring(startIdx, endIdx - startIdx) : stripped[startIdx..];
+                }
+                // Remove all whitespace characters (spaces, tabs, newlines)
+                stripped = new string(stripped
+                    .Where(c => !char.IsWhiteSpace(c)).ToArray());
+
+                // Try to load the data from the string
+                byte[] base64;
+                try
+                {
+                    base64 = Convert.FromBase64String(stripped);
+                }
+                // Fix when editors don't want to copy the padding at the end
+                catch (FormatException)
+                {
+                    // If there's not a padding issue, re-throw the error
+                    if (stripped.Length % 4 == 0)
+                        throw;
+
+                    // Try to fix padding issues
+                    var paddingNeeded = 4 - (stripped.Length % 4);
+                    stripped = stripped
+                        .PadRight(stripped.Length + paddingNeeded, '=');
+                    base64 = Convert.FromBase64String(stripped);
+                }
+
+                // Decompress the data
+                byte[] decompressedBytes;
+                try
+                {
+                    // Attempt Brotli decompression (new format)
+                    using var compressedStream = new MemoryStream(base64);
+                    using var brotliStream = new BrotliStream(compressedStream, CompressionMode.Decompress);
+                    using var decompressedStream = new MemoryStream();
+                    brotliStream.CopyTo(decompressedStream);
+                    decompressedBytes = decompressedStream.ToArray();
+                }
+                catch (InvalidDataException)
+                {
+                    // Old format, no compression
+                    decompressedBytes = base64;
+                }
+
+                // Decode the data
+                Configuration? config;
+                try
+                {
+                    var decode = Encoding.UTF8.GetString(decompressedBytes);
+                    config = JsonConvert.DeserializeObject<Configuration>(decode);
+                }
+                // Fallback to decoding the non-decompressed data
+                catch (Exception)
+                {
+                    var decode = Encoding.UTF8.GetString(base64);
+                    config = JsonConvert.DeserializeObject<Configuration>(decode);
+                }
                 if (config != null)
                 {
                     DebugConfig = true;
@@ -117,7 +187,9 @@ internal class Debug : ConfigWindow, IDisposable
             "Paste a base64 encoded configuration here to load it into the plugin." +
             "\nThis comes from a debug file." +
             "\nThis will overwrite your current configuration temporarily, restoring your own configuration when you disable debug mode." +
-            "\nDebug mode will also be disabled if you unload the plugin.");
+            "\nDebug mode will also be disabled if you unload the plugin." +
+            "\n\nTip: To make it easier to copy from the file, you can select 'Start Debug Code' thru 'End Debug Code'" +
+            "(the extra stuff will be trimmed off)");
 
         if (DebugConfig)
             if (ImGui.Button("Disable Debug Config Mode"))
@@ -127,32 +199,8 @@ internal class Debug : ConfigWindow, IDisposable
 
         ImGuiEx.Spacing(new Vector2(0f, SpacingMedium));
 
-        var target = Svc.Targets.Target;
-        var player = Svc.ClientState.LocalPlayer;
-
-        // Custom 2-Column Styling
-        static void CustomStyleText(string firstColumn, object? secondColumn, bool useMonofont = false, Vector4? optionalColor = null)
-        {
-            ImGui.Columns(2, border: false);
-            if (!string.IsNullOrEmpty(firstColumn))
-            {
-                ImGui.TextUnformatted(firstColumn);
-            }
-
-            ImGui.NextColumn();
-
-            // Optional Color
-            Vector4 textColor = optionalColor ?? ImGuiColors.DalamudGrey;
-            ImGui.PushStyleColor(ImGuiCol.Text, textColor);
-
-            // Optional Monofont
-            if (useMonofont) ImGui.PushFont(UiBuilder.MonoFont);
-            ImGui.TextUnformatted(secondColumn?.ToString() ?? string.Empty);
-            if (useMonofont) ImGui.PopFont();
-
-            ImGui.PopStyleColor();
-            ImGui.Columns(1);
-        }
+        var target = CurrentTarget;
+        var player = Player.Object;
 
         if (player is null)
         {
@@ -192,10 +240,10 @@ internal class Debug : ConfigWindow, IDisposable
                 // Build First Column
                 string firstColumn = (string.IsNullOrEmpty(statusName), string.IsNullOrEmpty(sourceName)) switch
                 {
-                    (false, false)  => $"{sourceName} → {statusName}:", // Both Exist
-                    (false, true)   => $"{statusName}:",                // Only 'statusName'
-                    (true, false)   => $"{sourceName} → {UnknownName}", // Only 'sourceName'
-                    (true, true)    => UnknownName                      // Neither
+                    (false, false) => $"{sourceName} → {statusName}:", // Both Exist
+                    (false, true) => $"{statusName}:",                // Only 'statusName'
+                    (true, false) => $"{sourceName} → {UnknownName}", // Only 'sourceName'
+                    (true, true) => UnknownName                      // Neither
                 };
 
                 // Build Second Column
@@ -236,10 +284,10 @@ internal class Debug : ConfigWindow, IDisposable
                     // Build First Column
                     string firstColumn = (string.IsNullOrEmpty(statusName), string.IsNullOrEmpty(sourceName)) switch
                     {
-                        (false, false)  => $"{sourceName} → {statusName}:", // Both Exist
-                        (false, true)   => $"{statusName}:",                // Only 'statusName'
-                        (true, false)   => $"{sourceName} → {UnknownName}", // Only 'sourceName'
-                        (true, true)    => UnknownName                      // Neither
+                        (false, false) => $"{sourceName} → {statusName}:", // Both Exist
+                        (false, true) => $"{statusName}:",                // Only 'statusName'
+                        (true, false) => $"{sourceName} → {UnknownName}", // Only 'sourceName'
+                        (true, true) => UnknownName                      // Neither
                     };
 
                     // Build Second Column
@@ -276,6 +324,7 @@ internal class Debug : ConfigWindow, IDisposable
             CustomStyleText("Health:", $"{player.CurrentHp:N0} / {player.MaxHp:N0} ({MathF.Round(PlayerHealthPercentageHp(), 2)}%)");
             CustomStyleText("MP:", $"{player.CurrentMp:N0} / {player.MaxMp:N0}");
             CustomStyleText("Job:", $"{player.ClassJob.Value.NameEnglish} (ID: {player.ClassJob.RowId})");
+            CustomStyleText($"Level (synced):", $"{Player.Level} ({Svc.PlayerState.EffectiveLevel})");
             CustomStyleText("Zone:", $"{Svc.Data.GetExcelSheet<TerritoryType>().FirstOrDefault(x => x.RowId == Svc.ClientState.TerritoryType).PlaceName.Value.Name} (ID: {Svc.ClientState.TerritoryType})");
             CustomStyleText("In PvP:", InPvP());
             CustomStyleText("In FATE:", InFATE());
@@ -358,142 +407,52 @@ internal class Debug : ConfigWindow, IDisposable
             }
 
             ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+
+            if (ImGui.TreeNode("Content Data"))
+            {
+                CustomStyleText("Content Name:",
+                    $"content:{Content.ContentName ?? "??"}, territory:{Content.TerritoryName ?? "??"}");
+                CustomStyleText("Content IDs:",
+                    $"territory:{Content.TerritoryID}, cfc:{Content.ContentFinderConditionRow?.RowId.ToString() ?? "??"}, map:{Content.MapID}");
+                CustomStyleText("Content Type:", Content.ContentType?.ToString() ?? "??");
+                CustomStyleText("Intended Use:", Content.TerritoryIntendedUse?.ToString() ?? "??");
+                CustomStyleText("Difficulty:",
+                    $"from name:{Content.ContentDifficultyFromName ?? "??"}, determined:{Content.ContentDifficulty?.ToString() ?? "??"}");
+                CustomStyleText("CDF Boss-Only:", ContentCheck.IsInBossOnlyContent());
+                CustomStyleText("CDF Halved:",
+                    $"bottom:{ContentCheck.IsInBottomHalfContent()}, top:{ContentCheck.IsInTopHalfContent()}");
+                CustomStyleText("CDF Casual VS Hard:",
+                    $"casual:{ContentCheck.IsInCasualContent()}, hard:{ContentCheck.IsInHardContent()}");
+                CustomStyleText("CDF Cored:",
+                    $"soft:{ContentCheck.IsInSoftCoreContent()}, mid:{ContentCheck.IsInMidCoreContent()}, hard:{ContentCheck.IsInHardCoreContent()}");
+
+                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+                ImGui.TreePop();
+            }
+
+            ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+
+
+
+            ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
         }
 
         if (ImGui.CollapsingHeader("Target Data"))
         {
-            if (target is not null)
+            DrawTargetInfo(target);
+        }
+
+        if (ImGui.CollapsingHeader("All Enemies"))
+        {
+            ImGui.Indent();
+            foreach (var e in Svc.Objects.Where(x => x.IsHostile()))
             {
-                bool? foundSheet = null;
-                BNpcBase? battleNPCRow = null;
-                if (ActionWatching.BNPCSheet.TryGetValue(target.BaseId,
-                        out var sheetRow))
+                if (ImGui.CollapsingHeader($"{e.Name} ({e.GameObjectId})"))
                 {
-                    battleNPCRow = sheetRow;
-                    foundSheet = true;
-                }
-                else
-                    foundSheet = false;
-                
-                CustomStyleText("Name:", target?.Name);
-                CustomStyleText("IDs: (<entity>/<data or base>)", $"{target?.EntityId} / {target?.BaseId}");
-                CustomStyleText("Nameplate:", target?.GetNameplateKind().ToString());
-                CustomStyleText("Rank:", $"{battleNPCRow?.Rank.ToString() ?? "null"} (found sheet: {(foundSheet is true ? "yes" : "no")})");
-                CustomStyleText("Health:", $"{GetTargetCurrentHP():N0} / {GetTargetMaxHP():N0} ({MathF.Round(GetTargetHPPercent(), 2)}%)");
-                CustomStyleText("Distance:", $"{MathF.Round(GetTargetDistance(), 2)}y");
-                CustomStyleText("Hitbox Radius:", target?.HitboxRadius);
-                CustomStyleText("In Melee Range:", InMeleeRange());
-                CustomStyleText("Height Difference:", $"{MathF.Round(GetTargetHeightDifference(), 2)}y");
-                CustomStyleText("Relative Position:", AngleToTarget().ToString());
-                CustomStyleText("Requires Positionals:", TargetNeedsPositionals());
-                CustomStyleText("Is Invincible:", TargetIsInvincible(target!));
-                CustomStyleText("Is Hostile:", target?.IsHostile());
-                CustomStyleText("Is Friendly:", target?.IsFriendly());
-                CustomStyleText("Is Boss:", target?.IsBoss());
-                CustomStyleText("In Boss Encounter:", InBossEncounter());
-
-                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
-
-            if (ImGui.TreeNode("Cast Data"))
-            {
-                if (target is IBattleChara castChara)
-                {
-                    CustomStyleText("Cast Action:", castChara.CastActionId == 0
-                        ? string.Empty
-                        : $"{(string.IsNullOrEmpty(GetActionName(castChara.CastActionId))
-                            ? "Unknown"
-                            : GetActionName(castChara.CastActionId))} (ID: {castChara.CastActionId})");
-                    CustomStyleText("Cast Time:", $"{castChara.CurrentCastTime:F2} / {castChara.TotalCastTime:F2}");
-
-                    // Extract Lumina Data
-                    var charaSpell = castChara.CastActionId > 0
-                        ? Svc.Data.GetExcelSheet<Action>()?.GetRowOrDefault(castChara.CastActionId)
-                        : null;
-
-                    CustomStyleText("Cast 100ms:", $"{charaSpell?.Cast100ms * 0.1f ?? 0f:F2} + {charaSpell?.ExtraCastTime100ms * 0.1f ?? 0f:F2}");
-                    CustomStyleText("Cast Type:", $"{charaSpell?.CastType ?? 0}");
-                    CustomStyleText("Action Type:", $"{castChara.CastActionType}");
-                    CustomStyleText("Action Range:", $"{GetActionRange(charaSpell?.RowId ?? 0)}y");
-                    CustomStyleText("Effect Range:", $"{charaSpell?.EffectRange ?? 0}y");
-                    CustomStyleText("Interruptible:", $"{castChara.IsCastInterruptible}");
-                }
-                else CustomStyleText("No valid target.", "");
-
-                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
-                ImGui.TreePop();
-            }
-
-            if (ImGui.TreeNode("Object Data"))
-            {
-                CustomStyleText("DataId:", target?.BaseId);
-
-                // Display 'EntityId' only if it differs from 'GameObjectId'
-                if (target is not null && target.EntityId != target.GameObjectId)
-                {
-                    CustomStyleText("EntityId:", target.EntityId);
-                    ImGuiEx.InfoMarker("EntityId does not match ObjectId.\nThis object may have special interactivity rules.");
-                }
-
-                CustomStyleText("ObjectId:", target?.GameObjectId);
-                CustomStyleText("ObjectKind:", target?.ObjectKind);
-                CustomStyleText("ObjectSubKind:", target?.SubKind);
-                CustomStyleText("ObjectType:", target?.GetType()?.Name);
-
-                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
-                ImGui.TreePop();
-            }
-
-            if (ImGui.TreeNode("Enmity Data"))
-            {
-                CustomStyleText($"Highest Enmity DPS:", $"{StrongestDPS()?.Name}");
-
-                if (ImGui.TreeNode("Enmity Table"))
-                {
-                    foreach (var h in EnmityDictParty)
-                    {
-                        CustomStyleText($"{Svc.Objects.First(x => x.GameObjectId == h.Key).Name}:", $"{h.Value}%");
-                    }
-
-                    ImGui.TreePop();
-                }
-
-                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
-                ImGui.TreePop();
-            }
-
-            if (ImGui.TreeNode("Heal Target Data"))
-            {
-                CustomStyleText("Current:", SimpleTarget.Stack.AllyToHeal.Name);
-                ImGuiEx.InfoMarker("Cycles from Party UI Mouseover → Soft Target → Hard Target → Player.");
-
-                CustomStyleText("Shield:", $"{(SimpleTarget.Stack.AllyToHeal as ICharacter).ShieldPercentage}%");
-                CustomStyleText("Health:", $"{MathF.Round(GetTargetHPPercent(SimpleTarget.Stack.AllyToHeal), 2)}% / {MathF.Round(GetTargetHPPercent(SimpleTarget.Stack.AllyToHeal, true), 2)}% (+Shield)");
-
-                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
-                ImGui.TreePop();
-            }
-
-                if (ImGui.TreeNode("Enemies Near Target"))
-                {
-                    var enemies = Svc.Objects
-                    .OfType<IBattleNpc>()
-                    .Where(x => x.ObjectKind == ObjectKind.BattleNpc &&
-                                x.IsTargetable &&
-                                !x.IsDead &&
-                                x.BattleNpcKind is BattleNPCSubKind.Enemy or BattleNPCSubKind.BattleNpcPart);
-
-                    foreach (var enemy in enemies)
-                    {
-                        if (!enemy.Character()->InCombat) continue;
-                        if (enemy.GameObjectId == target?.GameObjectId) continue;
-
-                        var dist = MathF.Round(GetTargetDistance(enemy, target), 2);
-                        CustomStyleText($"{enemy.Name} ({enemy.GameObjectId}):", $"{dist}y");
-                    }
-
-                    ImGui.TreePop();
+                    DrawTargetInfo(e);
                 }
             }
+            ImGui.Unindent();
         }
 
         #endregion
@@ -534,6 +493,11 @@ internal class Debug : ConfigWindow, IDisposable
                         Util.ShowObject(member.BattleChara);
                         ImGui.TreePop();
                     }
+
+
+                    ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+
+                    DrawVFXTree(member.GameObject);
 
                     ImGui.TreePop();
                 }
@@ -612,6 +576,7 @@ internal class Debug : ConfigWindow, IDisposable
                         ? "Unknown"
                         : GetActionName(player.CastActionId))} (ID: {player.CastActionId})");
             CustomStyleText("GCD Total:", GCDTotal);
+            CustomStyleText("GCD Remaining:", RemainingGCD);
             CustomStyleText("Queued Action:", ActionManager.Instance()->QueuedActionId.ActionName());
             CustomStyleText("Animation Lock:", $"{ActionManager.Instance()->AnimationLock:F1}");
             CustomStyleText($"Duty Action 1:", $"{Action1.ActionName()}");
@@ -619,6 +584,7 @@ internal class Debug : ConfigWindow, IDisposable
             CustomStyleText($"Duty Action 3:", $"{Action3.ActionName()}");
             CustomStyleText($"Duty Action 4:", $"{Action4.ActionName()}");
             CustomStyleText($"Duty Action 5:", $"{Action5.ActionName()}");
+            CustomStyleText($"In Mudra:", NIN.InMudra);
 
             ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
 
@@ -627,6 +593,8 @@ internal class Debug : ConfigWindow, IDisposable
                 if (WrathOpener.CurrentOpener is not null)
                 {
                     CustomStyleText("Current Opener", WrathOpener.CurrentOpener.GetType().Name);
+                    CustomStyleText($"Cache:", WrathOpener.CurrentOpener?.CacheReady);
+                    CustomStyleText($"Pre-Checks:", $"Level: {WrathOpener.CurrentOpener?.LevelChecked}({Svc.PlayerState.EffectiveLevel}), CDs: {WrathOpener.CurrentOpener?.HasCooldowns()}");
                     CustomStyleText("Opener State:", WrathOpener.CurrentOpener.CurrentState);
                     CustomStyleText("Current Opener Action:", WrathOpener.CurrentOpener.CurrentOpenerAction.ActionName());
                     CustomStyleText("Current Opener Step:", WrathOpener.CurrentOpener.OpenerStep);
@@ -662,7 +630,7 @@ internal class Debug : ConfigWindow, IDisposable
         {
             if (ImGui.TreeNode("PvE"))
             {
-                foreach (var act in actionsPvE)
+                foreach (var act in actionsPvE.OrderBy(x => x.Name.ToString()))
                 {
                     var status = ActionManager.Instance()->GetActionStatus(ActionType.Action, act.RowId, checkRecastActive: false, checkCastingActive: false);
                     CustomStyleText(act.Name.ExtractText(), $"{ActionReady(act.RowId)}, {status} ({Svc.Data.GetExcelSheet<LogMessage>().GetRow(status).Text})");
@@ -811,6 +779,7 @@ internal class Debug : ConfigWindow, IDisposable
                     CustomStyleText("Quest:", $"{unlockQuest.Name} ({(UIState.Instance()->IsUnlockLinkUnlockedOrQuestCompleted(_debugSpell.Value.UnlockLink.RowId) ? "Completed" : "Not Completed")})");
 
                 CustomStyleText("Base Recast:", $"{_debugSpell.Value.Recast100ms / 10f}s");
+                CustomStyleText("Base Recast Total:", $"{GetCooldown(_debugSpell.Value.RowId).BaseCooldownTotal}");
                 CustomStyleText("Original Hook:", OriginalHook(_debugSpell.Value.RowId).ActionName());
                 CustomStyleText("Cooldown Total:", $"{GetCooldown(_debugSpell.Value.RowId).CooldownTotal}");
                 CustomStyleText("Current Cooldown:", GetCooldown(_debugSpell.Value.RowId).CooldownRemaining);
@@ -819,6 +788,7 @@ internal class Debug : ConfigWindow, IDisposable
                 CustomStyleText("Charges (Level):", $"{GetCooldown(_debugSpell.Value.RowId).MaxCharges}");
                 CustomStyleText("Range:", $"{GetActionRange(_debugSpell.Value.RowId)}");
                 CustomStyleText("Effect Range:", $"{_debugSpell.Value.EffectRange}");
+                CustomStyleText("In Range:", $"{InActionRange(_debugSpell.Value.RowId)}");
                 CustomStyleText("Can Target Hostile:", $"{_debugSpell.Value.CanTargetHostile}");
                 CustomStyleText("Can Target Self:", $"{_debugSpell.Value.CanTargetSelf}");
                 CustomStyleText("Can Target Friendly:", $"{_debugSpell.Value.CanTargetAlly}");
@@ -826,6 +796,7 @@ internal class Debug : ConfigWindow, IDisposable
                 CustomStyleText("Can Target Area:", $"{_debugSpell.Value.TargetArea}");
                 CustomStyleText("Can Queue:", $"{CanQueue(_debugSpell.Value.RowId)}");
                 CustomStyleText("Cast Type:", $"{_debugSpell.Value.CastType}");
+                CustomStyleText("Friendly?:", $"{(_debugSpell.Value.Unknown4 == 1 ? "No" : $"Yes {_debugSpell.Value.Unknown4}")}");
 
                 if (ActionWatching.ActionTimestamps.TryGetValue(_debugSpell.Value.RowId, out long lastUseTimestamp))
                     CustomStyleText("Time Since Last Use:", $"{(Environment.TickCount64 - lastUseTimestamp) / 1000f:F2}");
@@ -882,18 +853,18 @@ internal class Debug : ConfigWindow, IDisposable
                 ImGuiEx.TextUnderlined("Retargets:");
                 var first = true;
                 var distinctRetargets = retargets
-                    .DistinctBy(x => x.Value.ID)
-                    .Select(x => x.Value)
-                    .OrderBy(x => x.Action);
+                    .OrderBy(x => x.Key);
+
                 foreach (var retarget in distinctRetargets)
                 {
-                    if (!first) ImGuiEx.Spacing(new Vector2(0f, SpacingSmall/2));
+                    var val = retarget.Value;
+                    if (!first) ImGuiEx.Spacing(new Vector2(0f, SpacingSmall / 2));
 
-                    CustomStyleText($"Action: {retarget.Action.ActionName()}",
-                        $"ID: {retarget.ID,20}");
+                    CustomStyleText($"Action: {val.Action.ActionName()} (Key: {retarget.Key.ActionName()})",
+                        $"ID: {val.ID,20}");
                     // Set a set amount of distance to the right of the ID,
                     // so the help mark doesn't move
-                    var width = ImGui.CalcTextSize($"ID: {retarget.ID,20}").X;
+                    var width = ImGui.CalcTextSize($"ID: {val.ID,20}").X;
                     ImGui.SameLine();
                     ImGui.SetCursorPosX(ImGui.GetCursorPosX() + 110f.Scale() - width);
                     ImGui.Text("");
@@ -903,19 +874,19 @@ internal class Debug : ConfigWindow, IDisposable
 
                     ImGui.Indent(10f.Scale());
                     var replacedActionsString = string.Join(", ",
-                        retarget.ReplacedActions.Select(x => x.ActionName()));
+                        val.ReplacedActions.Select(x => x.ActionName()));
                     ImGuiEx.Text("Replaced Actions:");
                     ImGui.SameLine();
                     ImGuiEx.TextWrapped(ImGuiColors.DalamudGrey, replacedActionsString);
                     ImGui.Unindent(10f.Scale());
 
-                    CustomStyleText($"Resolver: {retarget.ResolverName}",
-                        $"Resolved Target: '{retarget.Resolver()?.Name ?? "Null"}'");
+                    CustomStyleText($"Resolver: {val.ResolverName}",
+                        $"Resolved Target: '{val.Resolver()?.Name ?? "Null"}'");
                     ImGuiComponents.HelpMarker("Resolvers may only resolve to a fallback target,\nexcept under conditions where the Retargeting would actually be applied.");
 
-                    var createdTimeString = retarget.Created.ToString(@"HH\:mm\:ss");
+                    var createdTimeString = val.Created.ToString(@"HH\:mm\:ss");
                     CustomStyleText($"Created: {createdTimeString}",
-                        $"Don't Cull Setting: {(retarget.DontCull ? "On" : "Off")}");
+                        $"");
 
                     ImGui.Unindent();
 
@@ -949,7 +920,67 @@ internal class Debug : ConfigWindow, IDisposable
         {
             CustomStyleText("Countdown Active:", $"{CountdownActive}");
             CustomStyleText("Countdown Remaining:", $"{CountdownRemaining}");
-            CustomStyleText("Raidwide Incoming:", $"{RaidWideCasting()}");
+            CustomStyleText("Raidwide Incoming:", $"{GroupDamageIncoming()}");
+
+            ImGui.Indent();
+            if (ImGui.CollapsingHeader("Occult Crescent Job Icons"))
+            {
+                ImGui.Text("Icons in `ui/uld/MKDSupportJob.uld`");
+                ImGui.NewLine();
+                var counter = 0;
+                for (var icon = 0; icon <= 25; icon++)
+                {
+                    if (!JobIDExtensions.GetActiveFromValue(icon))
+                        continue;
+
+                    counter++;
+                    ImGui.BeginGroup();
+
+                    ImGui.Text(
+                        $"{icon}: " +
+                        $"{JobIDExtensions.GetNameFromValue(icon) ?? "Unknown"}");
+                    ImGui.NewLine();
+                    Presets.DrawOccultJobIcon(icon);
+                    ImGui.EndGroup();
+
+                    if (counter >= 7)
+                    {
+                        ImGui.NewLine();
+                        counter = 0;
+                    }
+                    else
+                        ImGui.SameLine();
+                }
+            }
+            ImGui.Unindent();
+        }
+
+        if (ImGui.CollapsingHeader("VFX Info"))
+        {
+            ImGui.Indent();
+
+            CustomStyleText($"Shared Damage Effect On", CheckForSharedDamageEffect(out bool multihit, out var poorsap, 45) ? $"{poorsap?.Name} {GetTargetDistance(poorsap):F1}y Multi-Hit {multihit}" : "");
+            CustomStyleText($"Tankbuster Detected On", $"{(TryGetTankBusterTarget(out var tankBusterTarget) ? tankBusterTarget?.Name : "")}");
+
+            if (ImGui.CollapsingHeader("Friendly Target VFX"))
+            {
+                ImGuiEx.TextWrapped($"Mainly to be used with ARR and real party members since they don't actually get added to the party for some reason.");
+                ImGui.Separator();
+                foreach (var obj in Svc.Objects.Where(x => x.IsFriendly()))
+                {
+                    ImGui.Text($"{obj.Name} ({obj.GameObjectId})");
+                    DrawVFXTree(obj);
+                }
+            }
+            if (ImGui.CollapsingHeader("Hostile Target VFX"))
+            {
+                foreach (var obj in Svc.Objects.Where(x => x.IsHostile()))
+                {
+                    ImGui.Text($"{obj.Name} ({obj.GameObjectId})");
+                    DrawVFXTree(obj);
+                }
+            }
+            ImGui.Unindent();
         }
 
         #endregion
@@ -1107,6 +1138,13 @@ internal class Debug : ConfigWindow, IDisposable
             }
         }
 
+        if (ImGui.CollapsingHeader("Action Request"))
+        {
+            ImGui.Indent();
+            ActionRequestDebugUI.Draw();
+            ImGui.Unindent();
+        }
+
         #endregion
 
         ImGuiEx.Spacing(new Vector2(0, SpacingMedium));
@@ -1134,13 +1172,206 @@ internal class Debug : ConfigWindow, IDisposable
         #endregion
     }
 
+    private static unsafe void DrawTargetInfo(IGameObject? target)
+    {
+        if (target is not null)
+        {
+            bool? foundSheet = null;
+            BNpcBase? battleNPCRow = null;
+            if (ActionWatching.BNPCSheet.TryGetValue(target.BaseId,
+                    out var sheetRow))
+            {
+                battleNPCRow = sheetRow;
+                foundSheet = true;
+            }
+            else
+                foundSheet = false;
+
+            CustomStyleText("Name:", target?.Name);
+            CustomStyleText("Nameplate:", target?.GetNameplateKind().ToString());
+            CustomStyleText("Rank:", $"{battleNPCRow?.Rank.ToString() ?? "null"} (found sheet: {(foundSheet is true ? "yes" : "no")})");
+            CustomStyleText("Health:", $"{GetTargetCurrentHP():N0} / {GetTargetMaxHP():N0} ({MathF.Round(GetTargetHPPercent(), 2)}%)");
+            CustomStyleText("Distance:", $"{MathF.Round(GetTargetDistance(), 2)}y");
+            CustomStyleText("Hitbox Radius:", target?.HitboxRadius);
+            CustomStyleText("In Melee Range:", InMeleeRange());
+            CustomStyleText("Height Difference:", $"{MathF.Round(GetTargetHeightDifference(), 2)}y");
+            CustomStyleText("Relative Position:", AngleToTarget().ToString());
+            CustomStyleText("Requires Positionals:", TargetNeedsPositionals());
+            CustomStyleText("Is Invincible:", TargetIsInvincible(target!));
+            CustomStyleText("Is Hostile:", target?.IsHostile());
+            CustomStyleText("Is Friendly:", target?.IsFriendly());
+            CustomStyleText("Is Boss:", target?.IsBoss());
+            CustomStyleText("In Boss Encounter:", InBossEncounter());
+
+            ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+
+            if (ImGui.TreeNode("Cast Data"))
+            {
+                if (target is IBattleChara castChara)
+                {
+                    CustomStyleText("Cast Action:", castChara.CastActionId == 0
+                        ? string.Empty
+                        : $"{(string.IsNullOrEmpty(GetActionName(castChara.CastActionId))
+                            ? "Unknown"
+                            : GetActionName(castChara.CastActionId))} (ID: {castChara.CastActionId})");
+                    CustomStyleText("Cast Time:", $"{castChara.CurrentCastTime:F2} / {castChara.TotalCastTime:F2}");
+
+                    // Extract Lumina Data
+                    var charaSpell = castChara.CastActionId > 0
+                        ? Svc.Data.GetExcelSheet<Action>()?.GetRowOrDefault(castChara.CastActionId)
+                        : null;
+
+                    CustomStyleText("Cast 100ms:", $"{charaSpell?.Cast100ms * 0.1f ?? 0f:F2} + {charaSpell?.ExtraCastTime100ms * 0.1f ?? 0f:F2}");
+                    CustomStyleText("Cast Type:", $"{charaSpell?.CastType ?? 0}");
+                    CustomStyleText("Action Type:", $"{castChara.CastActionType}");
+                    CustomStyleText("Action Range:", $"{GetActionRange(charaSpell?.RowId ?? 0)}y");
+                    CustomStyleText("Effect Range:", $"{charaSpell?.EffectRange ?? 0}y");
+                    CustomStyleText("Interruptible:", $"{castChara.IsCastInterruptible}");
+                }
+                else CustomStyleText("No valid target.", "");
+
+                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+                ImGui.TreePop();
+            }
+
+            if (ImGui.TreeNode("Object Data"))
+            {
+                CustomStyleText("Data/BaseId:", target?.BaseId);
+
+                // Display 'EntityId' only if it differs from 'GameObjectId'
+                if (target is not null && target.EntityId != target.GameObjectId)
+                {
+                    CustomStyleText("EntityId:", target.EntityId);
+                    ImGuiEx.InfoMarker("EntityId does not match ObjectId.\nThis object may have special interactivity rules.");
+                }
+
+                CustomStyleText("ObjectId:", target?.GameObjectId);
+                CustomStyleText("NameId:", target?.GetNameId());
+                CustomStyleText("ObjectKind:", target?.ObjectKind);
+                CustomStyleText("ObjectSubKind:", target?.SubKind);
+                CustomStyleText("ObjectType:", target?.GetType()?.Name);
+
+                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+                ImGui.TreePop();
+            }
+
+            if (ImGui.TreeNode("Enmity Data"))
+            {
+                CustomStyleText($"Highest Enmity DPS:", $"{StrongestDPS()?.Name}");
+
+                if (ImGui.TreeNode("Enmity Table"))
+                {
+                    foreach (var h in EnmityDictParty)
+                    {
+                        CustomStyleText($"{Svc.Objects.SearchById(h.Key).Name}:", $"{h.Value}%");
+                    }
+
+                    ImGui.TreePop();
+                }
+
+                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+                ImGui.TreePop();
+            }
+
+            if (ImGui.TreeNode("Heal Target Data"))
+            {
+                CustomStyleText("Current:", SimpleTarget.Stack.AllyToHeal.Name);
+                ImGuiEx.InfoMarker("Cycles from Party UI Mouseover → Soft Target → Hard Target → Player.");
+
+                CustomStyleText("Shield:", $"{(SimpleTarget.Stack.AllyToHeal as ICharacter).ShieldPercentage}%");
+                CustomStyleText("Health:", $"{MathF.Round(GetTargetHPPercent(SimpleTarget.Stack.AllyToHeal), 2)}% / {MathF.Round(GetTargetHPPercent(SimpleTarget.Stack.AllyToHeal, true), 2)}% (+Shield)");
+
+                ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+                ImGui.TreePop();
+            }
+
+            if (ImGui.TreeNode("Enemies Near Target"))
+            {
+                var enemies = Svc.Objects
+                .OfType<IBattleNpc>()
+                .Where(x => x.ObjectKind == ObjectKind.BattleNpc &&
+                            x.IsTargetable &&
+                            !x.IsDead &&
+                            x.BattleNpcKind is BattleNPCSubKind.Enemy or BattleNPCSubKind.BattleNpcPart);
+
+                foreach (var enemy in enemies)
+                {
+                    if (!enemy.Character()->InCombat) continue;
+                    if (enemy.GameObjectId == target?.GameObjectId) continue;
+
+                    var dist = MathF.Round(GetTargetDistance(enemy, target), 2);
+                    CustomStyleText($"{enemy.Name} ({enemy.GameObjectId}):", $"{dist}y");
+                }
+
+                ImGui.TreePop();
+            }
+
+            ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+
+            DrawVFXTree(target);
+        }
+    }
+
+    private static void DrawVFXTree(IGameObject? obj)
+    {
+        if (ImGui.TreeNode($"VFX Data###{obj.GameObjectId}"))
+        {
+            ImGui.Text($"VFX for Target (ObjectId: {obj!.GameObjectId}):");
+            if (VfxManager.TryGetVfxFor(obj!.GameObjectId, out var vfxList, true))
+            {
+                foreach (var vfx in vfxList)
+                {
+                    CustomStyleText($"Path: {vfx.Path}{(IsTankBusterEffectPath(vfx) ? " (Tank Buster)" : "")}", $"Age: {vfx.AgeSeconds:N1}s");
+                    ImGui.SameLine();
+                    if (ImGui.Button($"Copy Path###{vfx.Path}{obj.GameObjectId}"))
+                    {
+                        ImGui.SetClipboardText(vfx.Path);
+                        Notify.Success($"{vfx.Path} copied.");
+                    }
+                }
+            }
+            else
+            {
+                ImGui.TextUnformatted("No VFX data tracked for target.");
+            }
+
+            ImGuiEx.Spacing(new Vector2(0f, SpacingSmall));
+            ImGui.TreePop();
+        }
+    }
+
+    // Custom 2-Column Styling
+    static void CustomStyleText(string firstColumn, object? secondColumn, bool useMonofont = false, Vector4? optionalColor = null)
+    {
+        ImGui.Columns(2, border: false);
+        if (!string.IsNullOrEmpty(firstColumn))
+        {
+            ImGui.TextUnformatted(firstColumn);
+        }
+
+        ImGui.NextColumn();
+
+        // Optional Color
+        Vector4 textColor = optionalColor ?? ImGuiColors.DalamudGrey;
+        ImGui.PushStyleColor(ImGuiCol.Text, textColor);
+
+        // Optional Monofont
+        if (useMonofont) ImGui.PushFont(UiBuilder.MonoFont);
+        ImGui.TextUnformatted(secondColumn?.ToString() ?? string.Empty);
+        if (useMonofont) ImGui.PopFont();
+
+        ImGui.PopStyleColor();
+        ImGui.Columns(1);
+    }
+
     private static void DisableDebugConfig()
     {
+        _debugConfig = string.Empty;
         DebugConfig = false;
         Service.Configuration =
             _previousConfig ??
-            Svc.PluginInterface.GetPluginConfig() as PluginConfiguration ??
-            new PluginConfiguration();
+            Svc.PluginInterface.GetPluginConfig() as Configuration ??
+            new Configuration();
         _previousConfig = null;
 
         P.IPC = Provider.Init();

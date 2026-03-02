@@ -1,4 +1,6 @@
-﻿using Dalamud.Game.ClientState.Objects.Types;
+﻿using System;
+using Dalamud.Game.ClientState.Objects.Types;
+using Dalamud.Game.ClientState.Statuses;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
 using ECommons.GameFunctions;
@@ -6,8 +8,10 @@ using ECommons.GameHelpers;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using System.Linq;
 using WrathCombo.Data;
+using WrathCombo.Extensions;
 using WrathCombo.Services;
-using Status = Dalamud.Game.ClientState.Statuses.Status;
+using Lumina.Excel.Sheets;
+
 namespace WrathCombo.CustomComboNS.Functions;
 
 internal abstract partial class CustomComboFunctions
@@ -19,7 +23,7 @@ internal abstract partial class CustomComboFunctions
     /// <param name="anyOwner">Check if the Player owns/created the status, true means anyone owns</param>
     /// <param name="target">Optional target</param>
     /// <returns>Status object or null.</returns>
-    public static Status? GetStatusEffect(ushort statusId, IGameObject? target = null, bool anyOwner = false)
+    public static IStatus? GetStatusEffect(ushort statusId, IGameObject? target = null, bool anyOwner = false)
     {
         // Default to LocalPlayer if no target/bad target
         target ??= LocalPlayer;
@@ -52,7 +56,7 @@ internal abstract partial class CustomComboFunctions
     /// <param name="anyOwner">Check if the Player owns/created the status, true means anyone owns</param>
     /// <param name="status">Retrieved Status object</param>
     /// <returns>Boolean if the status effect exists or not</returns>
-    public static bool HasStatusEffect(ushort statusId, out Status? status, IGameObject? target = null, bool anyOwner = false)
+    public static bool HasStatusEffect(ushort statusId, out IStatus? status, IGameObject? target = null, bool anyOwner = false)
     {
         target ??= LocalPlayer;
         status = GetStatusEffect(statusId, target, anyOwner);
@@ -84,7 +88,7 @@ internal abstract partial class CustomComboFunctions
     /// </summary>
     /// <param name="effect">Dalamud Status object</param>
     /// <returns>Float representing remaining status effect time</returns>
-    public unsafe static float GetStatusEffectRemainingTime(Status? effect)
+    public unsafe static float GetStatusEffectRemainingTime(IStatus? effect)
     {
         if (effect is null) return 0;
         if (effect.RemainingTime < 0) return (effect.RemainingTime * -1) + ActionManager.Instance()->AnimationLock;
@@ -102,11 +106,24 @@ internal abstract partial class CustomComboFunctions
         GetStatusEffectRemainingTime(GetStatusEffect(effectId, target, anyOwner));
 
     /// <summary>
+    ///     Same as <see cref="GetStatusEffectRemainingTime(ushort, IGameObject?, bool)"/>,
+    ///     but returns NaN if the status effect is not found, failing
+    ///     any comparisons.<br/>
+    ///     As in: It will not return <c>0</c>, and pass less than checks.
+    /// </summary>
+    /// <seealso cref="GetStatusEffectRemainingTime(ushort, IGameObject?, bool)"/>
+    public static float GetPossessedStatusRemainingTime
+    (ushort effectId, IGameObject? target = null, bool anyOwner = false) =>
+    HasStatusEffect(effectId, out var status, target, anyOwner)
+        ? GetStatusEffectRemainingTime(status)
+        : float.NaN;
+
+    /// <summary>
     /// Retrieves remaining time of a Status Effect
     /// </summary>
     /// <param name="effect">Dalamud Status object</param>
     /// <returns>Integer representing status effect stack count</returns>
-    public static ushort GetStatusEffectStacks(Status? effect) => effect?.Param ?? 0;
+    public static ushort GetStatusEffectStacks(IStatus? effect) => effect?.Param ?? 0;
 
     /// <summary>
     /// Retrieves the status effect stack count
@@ -174,7 +191,10 @@ internal abstract partial class CustomComboFunctions
             ) == true;
 
         if (hasActionPenalty)
+        {
             Svc.Targets.Target = null;
+            OverrideTarget = null;
+        }
 
         return hasActionPenalty;
     }
@@ -188,9 +208,12 @@ internal abstract partial class CustomComboFunctions
     {
         if (target is not IBattleChara tar)
             return false;
+        var statuses = tar.SafeStatusList;
+        if (statuses is null)
+            return false;
 
         // Turn Target's status to uint hashset
-        var targetStatuses = tar.StatusList.Select(s => s.StatusId).ToHashSet();
+        var targetStatuses = statuses.Select(s => s.StatusId).ToHashSet();
         uint targetID = tar.BaseId;
 
         // Returning False in each case because there should be no other General Invincibility Check needed
@@ -214,6 +237,18 @@ internal abstract partial class CustomComboFunctions
                      HasStatusEffect(152, tar, true) || NumberOfObjectsInRange<SelfCircle>(30, checkInvincible: false) > 1))
                     return true;
                 return false;
+
+            case 281: //Whorleater (Hard)
+                if ((targetID is 2663 && Player.Job.IsPhysicalRangedDps() && targetStatuses.Contains(478)) ||
+                    (targetID is 2694 && (Player.Job.IsMagicalRangedDps() || Player.Job.IsHealer()) && targetStatuses.Contains(477)))
+                    return true;
+                return StatusCache.CompareLists(StatusCache.InvincibleStatuses, targetStatuses);
+
+            case 359: //Whorleater (Extreme)
+                if (targetID is 2802 && Player.Job.IsPhysicalRangedDps() && targetStatuses.Contains(478) ||
+                    targetID is 2803 && (Player.Job.IsMagicalRangedDps() || Player.Job.IsHealer()) && targetStatuses.Contains(477))
+                    return true;
+                return StatusCache.CompareLists(StatusCache.InvincibleStatuses, targetStatuses);
 
             case 508: // The Void Ark
                 // Sawtooth 5103
@@ -242,11 +277,9 @@ internal abstract partial class CustomComboFunctions
                     if (targetID is 9340) return HasStatusEffect(671, tar, true); // F being covered by M
                 }
 
-                //Savage/Ultimate? Not sure which omega fight uses 3499 and 3500.
-                //Also, SE, why use a new Omega-M status and reuse the old Omega-F? -_-'
-                //Wonder if targetIDs are the same......
-                if ((tar.StatusList.Any(x => x.StatusId == 3454) && HasStatusEffect(3499)) ||
-                    (tar.StatusList.Any(x => x.StatusId == 1675) && HasStatusEffect(3500)))
+                //Savage/Ultimate? Not sure which omega fight uses 3499 and 3500
+                if ((tar.SafeStatusList?.Any(x => x.StatusId == 3454) is true && HasStatusEffect(3499)) ||
+                    (tar.SafeStatusList?.Any(x => x.StatusId == 1675) is true && HasStatusEffect(3500)))
                     return true;
 
                 //Check for any ol invincibility
@@ -296,7 +329,16 @@ internal abstract partial class CustomComboFunctions
                     if (bossHasParry && (!isTank || !isFrontFacing)) return true;
                 }
                 return false;
+            case 1174:
+                // Colossus Rubricatus = 9511
+                // No point attacking anymore when it begins to cast self-detonate = 14574
 
+                if (targetID is 9511)
+                {
+                    return tar.CastActionId == 14574;
+                }
+
+                return false;
             case 1248: // Jeuno 1 Ark Angels
                 // ArkAngel HM = 1804
                 // ArkAngel MR = 18051 (A)
@@ -312,8 +354,28 @@ internal abstract partial class CustomComboFunctions
                 }
                 return false;
 
+            case 1263: // M8S
+                // Wolf of Wind = 18219
+                // Wolf of Stone = 18225
+                if (targetID is 18219 or 18225)
+                {
+                    if (HasStatusEffect(4389)) return targetID != 18225; // Target Wolf of Wind
+                    if (HasStatusEffect(4390)) return targetID != 18219; // Target Wolf of Stone
+                }
+                return false;
+
             case 1267: //Sunken Temple of Qarn Temple Guardian
                 if (targetID is 18300 && HasStatusEffect(350, tar, true)) return true;
+                return false;
+
+            case 1290: //Pilgrim's Traverse
+                // Eminent Grief = 18666
+                // Devoured Eater = 18667
+                if (targetID is 18666 or 18667)
+                {
+                    if (HasStatusEffect(4559)) return targetID != 18667; // Target Eminent Grief
+                    if (HasStatusEffect(4560)) return targetID != 18666; // Target Devoured Eater
+                }
                 return false;
 
             case 1292: //Meso Terminal
@@ -330,13 +392,18 @@ internal abstract partial class CustomComboFunctions
 
                 if (targetID is 18576 or 18577 or 18578 or 18579 or 18642)
                 {
-                    if (HasStatusEffect(3065)) return targetID != 18642; // Hellmaker checking for fire floor debuff
+                    if (HasStatusEffect(3065)) return targetID != 18642 || GetTargetDistance(tar) > 20;  // Hellmaker checking for fire floor debuff
                     if (HasStatusEffect(4542)) return targetID != 18576; // Alpha
                     if (HasStatusEffect(4543)) return targetID != 18577; // Beta
                     if (HasStatusEffect(4544)) return targetID != 18578; // Gamma
                     if (HasStatusEffect(4545)) return targetID != 18579; // Delta
                 }
                 return false;
+            
+            case 1323: //M10S
+                // 19287 Red Hot
+                // 19288 Deep Blue
+                return targetID is 19287 or 19288 && GetTargetCurrentHP(target) <= 1;
 
             default:
                 // General invincibility check
@@ -351,11 +418,22 @@ internal abstract partial class CustomComboFunctions
     /// </summary>
     /// <param name="target"></param>
     /// <returns></returns>
-    public unsafe static bool TargetIsStatusCapped(IGameObject? target)
+    public static unsafe bool TargetIsStatusCapped(IGameObject? target)
     {
-        target ??= LocalPlayer;
-        if (target is IBattleChara bc)
-            return bc.StatusList.Count(x => x.StatusId != 0) == bc.Struct()->StatusManager.NumValidStatuses;
+        try
+        {
+            target ??= LocalPlayer;
+            if (target is IBattleChara bc)
+                return bc.StatusList.Count(x => x.StatusId != 0) ==
+                       bc.Struct()->StatusManager.NumValidStatuses;
+        }
+        // Catch issues with:
+        // - Getting the StatusList from suddenly-stale GameObjects
+        // - Getting the number of valid statuses from scuffed NPCs
+        catch
+        {
+            // Ignored, assume false
+        }
 
         return false;
     }
@@ -370,6 +448,14 @@ internal abstract partial class CustomComboFunctions
     public static bool CanApplyStatus(IGameObject? target, ushort statusId)
     {
         target ??= LocalPlayer;
+        if (target is null)
+            return false;
+
+        //Check to see if it's a buff or debuff and therefore if the target is suitable for the status
+        var status = Svc.Data.GetExcelSheet<Lumina.Excel.Sheets.Status>().GetRow(statusId);
+        if ((target.IsHostile() && status.StatusCategory != 2) || (target.IsFriendly() && status.StatusCategory != 1))
+            return false;
+
         if (!TargetIsStatusCapped(target) || HasStatusEffect(statusId, target))
             return true;
 
@@ -382,4 +468,16 @@ internal abstract partial class CustomComboFunctions
     /// <seealso cref="CanApplyStatus(IGameObject?,ushort)"/>
     public static bool CanApplyStatus(IGameObject? target, ushort[] status) =>
         status.Any(statusId => CanApplyStatus(target, statusId));
+
+    public static bool HasCleansableDoom(IGameObject? target = null)
+    {
+        target ??= CurrentTarget;
+        target ??= LocalPlayer;
+
+        if (target is not IBattleChara { } chara)
+            return false;
+
+        return StatusCache.HasCleansableDoom(target);
+    }
+
 }
